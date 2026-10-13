@@ -1,0 +1,63 @@
+---
+name: work
+description: Work a tickets directory to completion — unblocked tickets run in parallel on implementer subagents in their own worktrees; every finished ticket comes back here for review, teach, squash-merge and commit; the loop continues until the frontier is empty.
+argument-hint: "optional: tickets dir (default: this task's tickets/<side>/) [parallel:N, default 2] [after:<session>[#NN]] [mode:local|story]"
+disable-model-invocation: true
+model: opus[1m]
+effort: high
+---
+
+# Work
+
+The ticket loop, local. This session is the orchestrator: it plans waves, spawns workers, and holds every human gate — review, teach, commit — in one place, in ticket-completion order. It writes no ticket code itself (small review fixes excepted). Workers are `implementer` subagents (`~/.claude/agents/implementer.md`): sonnet, each in its own git worktree branched from this branch, no access to the user, one ticket each.
+
+Identity (slug, side, session name, base branch), peers and the `WAITING` / `DONE` / `DEVIATION` protocol are exactly as in section 0 of `~/.agents/skills/implement/SKILL.md` — read it once and apply it here. State lives in the ticket files under `~/.agents/scratch/<slug>/tickets/<side>/` (resolve `~` to the absolute home directory); with no argument that is the directory. Re-running `/work` resumes from the files. A wave whose only unblocked tickets wait on the other side's ticket (`be/02`) parks exactly as `/implement` step 1 describes — on session `<slug>-<other side>` — and resumes when its `DONE` arrives; `after:` overrides the target.
+
+**Mode** = `mode:` in context.md's frontmatter (missing = `local`); `mode:local|story` as an argument only overrides it. `local` is everything below as written. `story` — one PR per ticket — reads `~/.agents/skills/work/STORY.md` once and applies it at the four points marked *(story)*; everything else is shared.
+
+## 1. Load the plan
+
+Read every ticket: title, status, "Blocked by", "Touches", acceptance criteria. Load `context.md` and `spec.md` from the parent dir — the settled plan; workers get pointed at the parts that matter to their ticket. Confirm the ground: this session sits in the task's worktree, on the task branch (`git rev-parse --abbrev-ref HEAD`), clean working tree, and the branch is based on the base branch (section 0 of /implement). Anything else → say so and stop. *(story)* The task branch is the story branch (STORY.md §2), and the resume table of STORY.md §3 runs before the first wave.
+
+## 2. Plan the wave
+
+Frontier = tickets not done whose blockers are all done (other-side blockers count: their files are in `tickets/<other side>/`). From it take up to N tickets (`parallel:N`, default 2) whose **Touches** areas are disjoint; tickets sharing an area go to a later wave — a conflict at merge costs more than waiting. If tickets lack a "Touches" line, infer areas from their text and say that you did. Report the wave in one line: which tickets, why these, what waits and on whom. Before the **first** wave only, confirm with the user (AskUserQuestion); later waves proceed unless the user said stop.
+
+## 3. Spawn the wave
+
+One message, one `implementer` subagent per ticket, as background subagents so results arrive as each finishes. Each prompt contains only: the ticket file verbatim; the paths to `context.md`/`spec.md` plus the 3–10 lines from them the ticket depends on (glossary terms, seams, contract); the base branch name; the rules below; *(story)* the `Branch:` / `Base:` lines of STORY.md §4. A worker's context is its own — do not paste the whole plan or other tickets.
+
+Rules for every worker: build only what the ticket says; stay inside "Touches" and report anything outside instead of fixing it; run the relevant tests until green; commit on your branch as `wip: <NN> <title>`; return the report format; never ask the user — take the small calls and list them, stop on the big ones.
+
+## 4. Land each ticket as it returns
+
+For each worker report, in arrival order:
+
+1. **Inspect** — `git diff <feature-branch>...<worker-branch> --stat`, then the report's `decisions`, `open`, `outside-scope`. `status: blocked` or a non-empty `open` → put it to the user now (AskUserQuestion) and respawn a fresh implementer with the decision written into its prompt (its branch continues from the worker's wip commit). Outside-scope items go to context.md as notes, not into this ticket.
+2. **Review** — the reviewer pass from the "Reuse" section of `~/.agents/skills/deep-review/SKILL.md`: diff command = `git diff <feature-branch>...<worker-branch>`, requirements sources = the ticket + `context.md`/`spec.md`. The risk-based selection applies (classifier + rules); when a flag looks wrong for what you know of the change, add that dimension rather than drop it — nobody watched these edits land. Real findings: small ones you fix yourself in the worker's worktree (`git -C <worktree>`), substantial ones go to a fresh implementer with the findings as its plan; debatable ones → user; disproved ones → dropped. Step 3b of deep-review (findings log, repeat → rule/Conventions proposal) runs here too; its questions go to the user together with this ticket's debatable findings, while the loop keeps landing and spawning.
+3. **Verify** — run the ticket's tests in the worker's worktree. Criteria that need eyes are checked **after the merge** (step 5) on THIS worktree's dev server — **FE AFTER_URL** = the contents of this worktree's `.shots/.fe-url` if present (`wts` writes it on start, removes it on exit); else the `wts` rule — this task's BE worktree exists → this worktree's PORT (.env.local, else .env), otherwise `http://localhost:<R>` (R = the configured remote-API FE port, `~/.agents/bin/wtconf -v WT_REMOTE_FE_PORT`). BE AFTER_URL = this worktree's PORT (.env.local, else .env). **Servers are the user's.** Never start a dev server yourself (whatever the project's dev command is — `~/.agents/bin/wtconf WT_FE_DEV_CMD WT_BE_DEV_CMD`), never kill anything, and never pick another port. If nothing answers at the URL, or `wtwho` shows port R held by another worktree, tell the user in one line — "port R is held by <slug> — run `wts <slug> fe --take` when you can" (or "run `wts <slug> fe`" when it is free) — and wait (AskUserQuestion). While you wait for the server, keep the loop going: land other tickets' review and teach, spawn the next wave; queue this ui verification and run it as soon as the server answers. Browser sessions are per task (agent-browser `--session <slug>-<side>`), so tasks verify in parallel; only port R is shared. Then, for every `Verify by: ui <route> — <expectation>` line, run ONE batch in this task's session (`<S>` = `<slug>-<side>`, `<WT>` = this worktree's root, absolute):
+
+   ```
+   agent-browser --session <S> --state ~/.agent-browser/auth-base.json --restore batch \
+     "set viewport 1440 900" "open <AFTER_URL><route>" "wait --text '<expectation>'" "snapshot -i -c" \
+     "console" "errors" "network requests --status 400-599" "screenshot <WT>/.shots/<NN>-after.png"
+   ```
+
+   An expectation containing `'` → pipe the same commands as a JSON array of arrays on stdin (`printf '%s' '[["open","…"],…]' | agent-browser --session <S> … batch`). Read the results in order: `wait` passes and the snapshot shows the expectation; console errors, page `errors` and any listed 4xx/5xx request are failures. **Login screen** (the `open` URL or the snapshot shows the login form — `~/.agents/bin/wtconf -v WT_LOGIN_SCREEN_HINT`) → never type credentials: `agent-browser --session <S> close`, tell the user in one line "login screen — run `ablogin` and let me know", wait (AskUserQuestion), then run the batch again (a fresh launch loads the new state). Screenshots only with an explicit `<WT>/.shots/…` path. Before the merge, take `<NN>-before.png` the same way: it is the pre-ticket state of the same server. Step done → `agent-browser --session <S> close` — never `close --all` (other tasks' sessions live there). Expectation missing, console error or failed request → back to step 4.2's fix loop, not a shrug. Then tell the user in one line what to look at — route, the two file paths, the expectation — and wait for their ok only when the criterion says a human must judge it (layout, copy). `Verify by: cmd …` and `test …` lines are run as written.
+4. **Teach** — the round from `/implement` step 5: diff brief (3–6 lines) first, then 2–4 questions via AskUserQuestion, levels 1→3 on wrong answers, "Skip teach — commit now" on every question, recap at the end.
+5. **Merge and commit** — *(story)* STORY.md §5 replaces this step and step 6's cleanup. Local: `git merge --squash <worker-branch>` into the feature branch. `git status` must show exactly the ticket's paths staged; if not, say what else came along and ask. Commit by loading and following `~/.agents/skills/commit/SKILL.md` (read the file); the message is written from the squashed diff — no `wip:` survives. A merge conflict is resolved only when trivial (and explained); otherwise shown to the user, and the ticket waits.
+6. **Close** — tick the ticket's criteria, set status done; update `context.md` if the build settled or changed a decision; `git worktree remove` the worker's worktree and delete its `wip` branch; BE side, when per-worktree databases are configured (`~/.agents/bin/wtconf WT_DB_CONTAINER WT_DB_PREFIX DB_NAME_VARS`; empty container = skip this): drop a database left behind by that worker — for each of `<prefix><worker-slug>` and `<prefix>wip_<worker-slug>` (slug = its `wip/` branch name without the prefix, lowercased, non-alphanumerics → `_`), skip it if it equals this worktree's DB name (the first `DB_NAME_VARS` entry in its `.env` — the task's db), else `bash ~/.agents/hooks/lib/db.sh exists <name> && bash ~/.agents/hooks/lib/db.sh drop <name>` (db.sh drops only `<prefix>` names, never the source db); send `DONE` per protocol if a session is waiting on this ticket. Append every `friction` entry from the report that is not "none" — and anything you hit yourself while landing it — to `~/.agents/friction.log`, one JSON line each: `jq -nc --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg session "<slug>-<side>" --arg slug "<slug>" --arg side "<fe|be>" --arg what "<short, reusable label>" --arg workaround "<…>" --arg cost "<minutes|blocked>" '$ARGS.named' >> ~/.agents/friction.log`. Keep `what` short and reusable (e.g. "missing db", "port busy", "flaky test: <spec>") so `friction` can group it.
+
+Then back to step 2: recompute the frontier and spawn the next ticket(s) so N workers stay busy while you land the rest. Landing is serial — one ticket at a time through the gates — building is parallel.
+
+## 5. Finish
+
+Frontier empty, no workers live → final report: tickets landed with commit hashes, test evidence, decisions written to `context.md`, anything skipped or still open, one `Friction` block listing this run's friction.log entries (`what` — workaround — cost; "none" if none), and the push/PR commands for this branch (`/pr` builds the PR from these artifacts). Don't push. *(story)* Instead: the tickets' PR links and states, then propose `/pr story` (STORY.md §9); skip the Linear question below.
+
+Then ask once (AskUserQuestion): update the Linear issue for this branch — status to the configured review status (`~/.agents/bin/wtconf -v WT_TRACKER_REVIEW_STATUS`; empty = leave the status alone) and the acceptance criteria from the tickets ticked in its description? Yes → `save_issue` via the linear MCP server, nothing else (no comments, no labels). No → leave Linear untouched.
+
+If the conversation gets heavy mid-loop: let the running workers finish, land their tickets, then `/handoff`, `/clear`, `/work <same dir>` — the ticket files carry the state; a `WAITING` list does not survive `/clear`, so name the sessions to re-park.
+
+## Never
+
+Never `sleep` or poll; a worker's return is the event. Never let two workers share a "Touches" area in one wave. Never merge a ticket that skipped review. Never start this session with `--dangerously-skip-permissions` — inbound messages from other sessions would be held and the FE/BE handshake would stall.

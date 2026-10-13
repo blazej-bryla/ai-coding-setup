@@ -1,0 +1,4 @@
+{
+  "description": "Read-only: AbovePrompt status band for task worktrees, /tickets /who /story commands",
+  "modules": ["./register.js"]
+}

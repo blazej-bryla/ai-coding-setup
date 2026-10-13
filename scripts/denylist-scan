@@ -1,0 +1,54 @@
+#!/usr/bin/env perl
+# denylist-scan — fail when any file (path or content) matches a denylist.
+#
+#   denylist-scan <list.txt> [<list.txt> …] -- <file> [<file> …]
+#   … | denylist-scan <list.txt> … --        (NUL-separated file names on stdin)
+#
+# A list has one rule per line, TAB-separated: kind<TAB>pattern[<TAB>note]; # comments, blank lines ok.
+#   lit = fixed string, case-insensitive      re = Perl regex, case-insensitive (both: path and content)
+#   path = Perl regex, case-insensitive, matched against the file path only
+# Prints `file:line: <note>: <match>` per hit; exit 1 on any hit, 2 on usage errors, 0 when clean.
+# Binary files are checked by path only.
+use strict;
+use warnings;
+
+my (@lists, @files, $seen_sep);
+for (@ARGV) {
+  if ($_ eq '--' && !$seen_sep) { $seen_sep = 1; next }
+  if ($seen_sep) { push @files, $_ } else { push @lists, $_ }
+}
+die "usage: denylist-scan <list.txt>… -- <file>…\n" unless @lists && $seen_sep;
+if (!@files && !-t STDIN) { local $/ = "\0"; while (my $f = <STDIN>) { chomp $f; push @files, $f if length $f } }
+
+my @rules;
+for my $list (@lists) {
+  open my $fh, '<', $list or do { warn "denylist-scan: cannot read $list: $!\n"; exit 2 };
+  while (my $l = <$fh>) {
+    chomp $l; $l =~ s/\r$//;
+    next if $l =~ /^\s*(#|$)/;
+    my ($kind, $pat, $note) = split /\t/, $l, 3;
+    $note //= $pat;
+    my $re;
+    if ($kind eq 'lit') { $re = qr/\Q$pat\E/i }
+    elsif ($kind eq 're' || $kind eq 'path') { $re = eval { qr/$pat/i } or do { warn "denylist-scan: bad regex in $list: $pat\n"; exit 2 } }
+    else { warn "denylist-scan: bad kind '$kind' in $list\n"; exit 2 }
+    push @rules, [$re, $note, $kind eq 'path'];
+  }
+}
+
+my $hits = 0;
+sub check {
+  my ($where, $text, $is_path) = @_;
+  for my $r (@rules) {
+    next if $r->[2] && !$is_path;
+    while ($text =~ /$r->[0]/g) { print "$where: $r->[1]: $&\n"; $hits++ }
+  }
+}
+for my $f (@files) {
+  check("$f:path", $f, 1);
+  next if -l $f || !-f $f;
+  next unless -T $f || -z $f;
+  open my $fh, '<', $f or next;
+  while (my $line = <$fh>) { check("$f:$.", $line) }
+}
+exit($hits ? 1 : 0);

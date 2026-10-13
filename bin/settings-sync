@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# settings-sync — merge the repo settings (~/.agents/settings.v3.1.json) with the live ones
+# (~/.claude/settings.json), catch the repo file up and print the command that applies the result.
+#
+#   settings-sync          merge, print the diffs live → merged and repo → merged; write the merged JSON
+#                          to the repo file when it differs; when live differs, write /tmp/settings.merged.json
+#                          and print the apply command
+#   settings-sync --check  print the diffs only, write nothing; exit 1 when live or repo differs from merged
+#
+# Merge: jq -s '.[1] * .[0]' <repo> <live> — a deep merge of objects where the repo value wins and
+# keys that exist only in the live file (written by /config, e.g. agentPushNotifEnabled) are kept.
+# Arrays are not merged: an array from the repo replaces the live one. That covers hooks and
+# permissions, which /config never writes, so the repo file is their single source — intended.
+# This script never writes ~/.claude/settings.json; the user applies it with the printed command.
+set -euo pipefail
+
+REPO="$HOME/.agents/settings.v3.1.json"
+LIVE="$HOME/.claude/settings.json"
+OUT=/tmp/settings.merged.json
+
+check=""
+case "${1:-}" in
+  --check) check=1 ;;
+  "") ;;
+  *) echo "usage: settings-sync [--check]" >&2; exit 2 ;;
+esac
+
+jq -e . "$REPO" >/dev/null || { echo "settings-sync: $REPO does not parse" >&2; exit 2; }
+if [ -f "$LIVE" ]; then
+  jq -e . "$LIVE" >/dev/null || { echo "settings-sync: $LIVE does not parse" >&2; exit 2; }
+  merged=$(jq -s '.[1] * .[0]' "$REPO" "$LIVE")
+else
+  merged=$(jq . "$REPO")
+fi
+printf '%s\n' "$merged" | jq -e 'type == "object"' >/dev/null || { echo "settings-sync: merge did not produce a JSON object" >&2; exit 2; }
+
+live_same=1
+if [ -f "$LIVE" ]; then
+  echo "== live → merged (what applying would change)"
+  diff <(jq -S . "$LIVE") <(printf '%s\n' "$merged" | jq -S .) && echo "settings-sync: live and merged are identical" || live_same=0
+else
+  echo "settings-sync: $LIVE does not exist yet"; live_same=0
+fi
+
+echo "== repo → merged (what the repo file is missing)"
+repo_same=1
+diff <(jq -S . "$REPO") <(printf '%s\n' "$merged" | jq -S .) && echo "settings-sync: repo and merged are identical" || repo_same=0
+
+if [ -n "$check" ]; then
+  [ "$live_same" = 1 ] && [ "$repo_same" = 1 ] && exit 0 || exit 1
+fi
+
+if [ "$repo_same" = 0 ]; then
+  printf '%s\n' "$merged" > "$REPO.tmp" && mv "$REPO.tmp" "$REPO"
+  echo "settings-sync: wrote $REPO (caught up with merged)"
+fi
+if [ "$live_same" = 0 ]; then
+  printf '%s\n' "$merged" > "$OUT"
+  echo "settings-sync: wrote $OUT"
+  echo "apply with:"
+  echo "cp ~/.claude/settings.json ~/.claude/settings.json.bak-\$(date +%Y%m%d-%H%M) && cp /tmp/settings.merged.json ~/.claude/settings.json"
+fi

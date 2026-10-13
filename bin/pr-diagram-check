@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# pr-diagram-check — can /pr draw a diagram here? Used by skills/pr step 2b.
+#
+#   pr-diagram-check   ok → prints the diagram-design plugin's install path, exit 0
+#                      not ok → prints one line "no diagram: <why>", exit 1
+#
+# Checks, in order: the diagram-design plugin is installed (~/.claude/plugins/installed_plugins.json
+# names it and its skill is on disk), and `python3` on PATH imports playwright (PNG export needs it;
+# the plugin never installs it). Never installs anything.
+
+reg="$HOME/.claude/plugins/installed_plugins.json"
+dir=$(/usr/bin/grep -o '"installPath": *"[^"]*/diagram-design/[^"]*"' "$reg" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+if [ -z "$dir" ] || [ ! -f "$dir/skills/diagram-design/SKILL.md" ]; then
+  echo "no diagram: diagram-design plugin not installed (/plugin → diagram-design)"; exit 1
+fi
+if ! python3 -c "import playwright" >/dev/null 2>&1; then
+  echo "no diagram: python3 on PATH can't import playwright (PNG export needs it)"; exit 1
+fi
+echo "$dir"

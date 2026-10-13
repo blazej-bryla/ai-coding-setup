@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Leak guard for edits made directly in this repo (enabled by: git config core.hooksPath .githooks).
+# Scans the STAGED version of every added/changed file with:
+#   - scripts/public-denylist.txt (generic: home paths, emails, tokens)
+#   - the maintainer's private denylist, when present ($AGENTS_DENYLIST, default ~/.agents/publish/denylist.txt)
+#   - gitleaks
+# Any hit refuses the commit.
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+git diff --cached --name-only -z --diff-filter=ACMR > "$tmp/files"
+[ -s "$tmp/files" ] || exit 0
+git checkout-index --prefix="$tmp/staged/" -z --stdin < "$tmp/files"
+
+lists=("$root/scripts/public-denylist.txt")
+priv=${AGENTS_DENYLIST:-$HOME/.agents/publish/denylist.txt}
+if [ -f "$priv" ]; then lists+=("$priv"); else echo "pre-commit: no private denylist at $priv — generic checks only" >&2; fi
+
+if ! (cd "$tmp/staged" && find . -type f -print0 | perl -0pe 's#^\./##' | perl "$root/scripts/denylist-scan" "${lists[@]}" --); then
+  echo "pre-commit: denylist hit — commit refused" >&2; exit 1
+fi
+command -v gitleaks >/dev/null || { echo "pre-commit: gitleaks not installed (brew install gitleaks) — commit refused" >&2; exit 1; }
+if gitleaks dir --help >/dev/null 2>&1; then gl=(gitleaks dir "$tmp/staged"); else gl=(gitleaks detect --no-git --source "$tmp/staged"); fi
+"${gl[@]}" --no-banner --redact --exit-code 1 || { echo "pre-commit: gitleaks finding — commit refused" >&2; exit 1; }

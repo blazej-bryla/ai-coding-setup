@@ -1,0 +1,14 @@
+# Generic leak patterns, checked by .githooks/pre-commit and CI. Project-specific terms are NOT
+# listed here (publishing them would leak them): the pre-commit hook adds the maintainer's private
+# denylist when it exists on the machine. Format: kind<TAB>pattern<TAB>note (see scripts/denylist-scan).
+re	/Us[e]rs/[^/\s]+	absolute macOS home path
+re	/home/[a-z][a-z0-9_-]{2,}/	absolute Linux home path
+re	[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}	email address
+re	gh[pousr]_[a-z0-9]{30,}	GitHub token
+re	github_pat_[a-z0-9_]{20,}	GitHub fine-grained token
+re	\bsk-(ant-)?[a-z0-9_-]{20,}	OpenAI / Anthropic key
+re	xox[abprs]-[a-z0-9-]{10,}	Slack token
+re	\bAKIA[0-9A-Z]{16}\b	AWS access key
+re	\blin_(api|oauth)_[a-z0-9]{20,}	Linear API key
+re	\bnpm_[a-z0-9]{30,}	npm token
+path	(^|/)config\.local\.zsh$	private config with real values — never commit it here

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# wtconf — print workflow config values (hooks/lib/config.sh: config file + defaults). Read-only.
+#
+#   wtconf                 every setting, NAME=value per line
+#   wtconf NAME [NAME…]    the named settings, NAME=value per line
+#   wtconf -v NAME         the bare value of one setting
+#
+# Skills call it instead of relying on the session's environment.
+set -euo pipefail
+. "$(cd "$(dirname "$0")/.." && pwd)/hooks/lib/config.sh"
+
+all() { sed -n 's/^: "\${\([A-Z_][A-Z0-9_]*\):=.*/\1/p' "$(cd "$(dirname "$0")/.." && pwd)/hooks/lib/config.sh"; }
+ok() { case "$1" in *[!A-Z0-9_]*|'') echo "wtconf: bad name '$1'" >&2; exit 2 ;; esac; }
+
+if [ "${1:-}" = -v ]; then ok "${2:-}"; printf '%s\n' "${!2-}"; exit 0; fi
+names=("$@"); [ $# -gt 0 ] || names=($(all))
+for n in "${names[@]}"; do ok "$n"; printf '%s=%s\n' "$n" "${!n-}"; done

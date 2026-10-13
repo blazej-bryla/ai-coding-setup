@@ -1,0 +1,22 @@
+[
+  {
+    "id": "no-dangerous-html",
+    "pattern": "dangerouslySetInnerHTML",
+    "paths": ["src/**/*.ts", "src/**/*.tsx"],
+    "exclude": ["**/*.spec.*", "**/*.test.*", "**/__tests__/**", "**/*.stories.*"],
+    "severity": "block",
+    "message": "No raw HTML injection: render it as JSX. If the HTML truly comes from a trusted server field, sanitize it first and say why in a rule-ok comment.",
+    "source": "seed",
+    "added": "2026-01-01"
+  },
+  {
+    "id": "no-console",
+    "pattern": "\\bconsole\\.(log|info|debug)\\(",
+    "paths": ["src/**/*.ts", "src/**/*.tsx"],
+    "exclude": ["**/*.spec.*", "**/*.test.*", "**/__tests__/**"],
+    "severity": "warn",
+    "message": "Use the project's logger instead of console.*.",
+    "source": "seed",
+    "added": "2026-01-01"
+  }
+]
