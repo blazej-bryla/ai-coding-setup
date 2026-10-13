@@ -1,4 +1,4 @@
-# agents — a Claude Code workflow for two-repo (FE + BE) teams
+# ai-coding-setup — a Claude Code workflow for two-repo (FE + BE) teams
 
 Skills, subagents, hooks and a small Claude Code mod that take a tracker issue from plan to merged PR:
 
@@ -47,7 +47,7 @@ labels — is configuration (see [Configure](#configure)). `WORKFLOW.md` is the 
 Skills and hooks refer to `~/.agents/…`, so clone the repo there (or let `install.sh` link `~/.agents` to your clone):
 
 ```sh
-git clone https://github.com/<you>/agents-public ~/.agents
+git clone <URL of this repo> ~/.agents
 ~/.agents/install.sh            # links skills/* and agents/*.md into ~/.claude; safe to re-run
 ~/.agents/install.sh --dry-run  # show what it would do
 ```

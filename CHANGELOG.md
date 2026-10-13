@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [3.6.1] - 2026-10-13
+
+### Added
+- `install.sh` enables the pre-commit leak guard when run from a clone of the public repo. It is safe to re-run and supports `--dry-run`.
+### Changed
+- The README title and LICENSE holder use the repository's own name, read from its origin remote, instead of a fixed name.
+
 ## [3.5.3] - 2026-10-13
 
 ### Added

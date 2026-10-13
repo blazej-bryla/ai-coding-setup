@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "description": "/work status panel above the prompt, and /tickets /who /story without a Claude turn (read-only)",
   "author": {
-    "name": "agents-public"
+    "name": "ai-coding-setup"
   }
 }

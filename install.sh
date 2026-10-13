@@ -5,7 +5,8 @@
 #
 #   ./install.sh [--force] [--dry-run]
 #
-# Also links ~/.agents → this repo when ~/.agents does not exist (skills and hooks refer to ~/.agents/…).
+# Also links ~/.agents → this repo when ~/.agents does not exist (skills and hooks refer to ~/.agents/…), and
+# turns on the leak-guard pre-commit hook (git config core.hooksPath .githooks) in this clone.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")" && pwd)
@@ -41,6 +42,18 @@ run mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
 for d in "$REPO"/skills/*/; do d=${d%/}; link "$d" "$CLAUDE/skills/${d##*/}"; done
 for f in "$REPO"/agents/*.md; do link "$f" "$CLAUDE/agents/${f##*/}"; done
 run chmod +x "$REPO"/hooks/*.sh "$REPO"/bin/* "$REPO"/scripts/* "$REPO"/.githooks/*
+
+# leak guard: the pre-commit hook scans every commit made in this clone (see README "Leak guard")
+if [ -f "$REPO/.githooks/pre-commit" ] && [ "$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null)" = "$(cd "$REPO" && pwd -P)" ]; then
+  if [ "$(git -C "$REPO" config --local core.hooksPath || true)" = .githooks ]; then
+    echo "ok       core.hooksPath = .githooks (leak-guard pre-commit active)"
+  else
+    run git -C "$REPO" config core.hooksPath .githooks
+    [ -n "$dry" ] || echo "set      core.hooksPath = .githooks (leak-guard pre-commit active)"
+  fi
+else
+  echo "skip     core.hooksPath (not a git clone of this repo)"
+fi
 
 cat <<'NEXT'
 
