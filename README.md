@@ -28,7 +28,7 @@ labels — is configuration (see [Configure](#configure)). `WORKFLOW.md` is the 
 | `hooks/` | `worktree-create.sh` (per-task worktrees, ports, per-worktree DB via `lib/db.sh`), `rules-guard.sh` + `rules-engine.jq` + `rules-check.sh` (project rules your linter can't express), `bash-guard.sh` (agents never start/kill dev servers or run watch-mode tests), `rtk-guard.sh`, `pr-created.sh`, `notify.sh`; `lib/config.sh` = every setting with its default |
 | `rules/my-frontend.json` | example rules file for the rules engine |
 | `mods/workflow/` | Claude Code mod: task status band above the prompt, `/tickets` `/who` `/story` without a model turn |
-| `shell/worktrees.zsh` | `wt`, `wts`, `wtwho`, `wtrm`, `wtclean`, `wtdb`, `ablogin`, `friction` |
+| `shell/worktrees.zsh` | `wt`, `wts`, `wtwho`, `wtrm`, `wtclean`, `wtdb`, `ablogin`, `friction`, `metrics` |
 | `bin/` | `wtconf` (prints the effective config), `pr-diagram-check`, `settings-sync` |
 | `config.example.zsh` | template for your `config.local.zsh` |
 

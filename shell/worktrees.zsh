@@ -1,4 +1,4 @@
-# ---- worktrees (v3.6) ------------------------------------------------------
+# ---- worktrees (v3.7) ------------------------------------------------------
 # One identifier for everything: the task key in the branch name (todo-12).
 # Creation happens in the WorktreeCreate hook; these helpers only get you there.
 # Repos, ports, commands, DB: hooks/lib/config.sh (values in ~/.agents/config.local.zsh; `wtconf` lists them).
@@ -171,4 +171,29 @@ friction() {
     | sort_by(.last) | reverse | .[]
     | "\(.n)× \(.what)  (last \(.last[0:10]))",
       (.items[] | "    \(.date[0:10]) \(.slug)-\(.side) [\(.cost)] — \(.workaround)")' "$f"
+}
+
+# metrics [days] — ~/.agents/metrics.log (JSON lines, one per landed ticket / fixed bug) of the last N days (default 7)
+metrics() {
+  local f=~/.agents/metrics.log since
+  [ -s "$f" ] || { echo "metrics.log is empty"; return 0; }
+  since=$(date -u -v-"${1:-7}"d +%Y-%m-%dT%H:%M:%SZ)
+  jq -rs --arg since "$since" --arg days "${1:-7}" '
+    def r1: . * 10 | round / 10;
+    def avg(f): map(f) | add / length | r1;
+    def tot(f): map(f) | add;
+    map(select(.date >= $since)) as $t | ($t | length) as $n
+    | if $n == 0 then "no tickets in the last \($days) days" else
+      ($t | map(select(.implementer_runs > 1)) | length) as $re
+      | "\($n) tickets, \($t | map(.slug) | unique | length) tasks, last \($days) days",
+        "  wall minutes      avg \($t | avg(.wall_minutes))   total \($t | tot(.wall_minutes))",
+        "  implementer runs  avg \($t | avg(.implementer_runs))   total \($t | tot(.implementer_runs))   respawned \($re)/\($n) (\($re * 100 / $n | round)%)",
+        "  reviewers         avg \($t | avg(.reviewers_selected | length))",
+        "  findings          avg \($t | avg(.findings_kept)) kept, \($t | avg(.findings_fixed)) fixed   total \($t | tot(.findings_kept)) kept, \($t | tot(.findings_fixed)) fixed",
+        "  teach             avg \($t | avg(.teach_questions)) questions   total \($t | tot(.teach_wrong))/\($t | tot(.teach_questions)) wrong",
+        "  prior art         \($t | map(select(.prior_art)) | length)/\($n)",
+        "  slowest:",
+        ($t | sort_by(-.wall_minutes) | .[:5][]
+          | "    \(.wall_minutes) min  \(.slug)-\(.side) \(.ticket) [\(.mode)]  runs \(.implementer_runs), findings \(.findings_kept)")
+      end' "$f"
 }

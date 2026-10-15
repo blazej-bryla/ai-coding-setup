@@ -90,7 +90,7 @@ touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
 they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`. A blocking edge to the other side's ticket is written as `be/02` or `fe/03`. When the task spans both repos, cut both sides' tickets in this one run; the other repo's /kickoff will only add its codebase findings."
+its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`. A blocking edge to the other side's ticket is written as `be/02` or `fe/03`. When the task spans both repos, cut both sides' tickets in this one run; the other repo's /kickoff will only add its codebase findings."
 
 **Regular task** (a story included) — ask the user (one AskUserQuestion call, two questions):
 
@@ -109,7 +109,7 @@ touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
 they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`. A blocking edge to the other side's ticket is written as `be/02` or `fe/03`. When the task spans both repos, cut both sides' tickets in this one run; the other repo's /kickoff will only add its codebase findings."
+its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`. A blocking edge to the other side's ticket is written as `be/02` or `fe/03`. When the task spans both repos, cut both sides' tickets in this one run; the other repo's /kickoff will only add its codebase findings."
 
 Story mode only, add to it: "Each ticket has at most ONE blocker in its own repo — linearise per `~/.agents/skills/work/STORY.md` §2 and show the linearised edges in the quiz; cross-repo edges don't count."
 

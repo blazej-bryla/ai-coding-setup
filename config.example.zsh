@@ -58,6 +58,9 @@ export WT_STORY_PR_LABEL=''                           # label for story PRs; emp
 export WT_PR_SKILL='.claude/skills/create-pr/SKILL.md'                 # the project's own PR skill, if any
 export WT_CHANGE_SUMMARY_SKILL='.claude/skills/change-summary/SKILL.md'
 
+# --- /work -------------------------------------------------------------------------------------------------
+export WT_WORKER_TIMEOUT_MIN='30'                     # minutes before /work asks about an implementer that has not returned
+
 # agent-browser encrypts the saved login state with this key — keep the real value out of every repo
 # (~/.zshrc or a secret manager):
 # export AGENT_BROWSER_ENCRYPTION_KEY=...

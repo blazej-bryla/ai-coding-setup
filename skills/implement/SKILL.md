@@ -47,6 +47,8 @@ Sync first: `git fetch origin`; if the awaited work landed in another worktree o
 
 Code here, not in a subagent, and without stopping for edit approvals — the session runs with `acceptEdits`, and the user reviews the finished diff at steps 4–5, not each edit. Do not narrate edits. Stop only for: a decision the ticket/context/spec leaves open (AskUserQuestion), an acceptance criterion you cannot meet, or the gates below. Delegate only research to Explore subagents on `model: sonnet`, and only when the answer isn't already in context.md/spec.md.
 
+Before writing any code, read the ticket's `**Prior art:**` paths and copy their structure — file layout, naming, how they fetch, validate and test (missing or `none` → no prior art) — and the "Conventions" section of the repo's worker contract, `~/.agents/projects/<repo>.md` (repo = the directory name of the configured `FE_REPO` / `BE_REPO`), the same references `/work` hands its implementers.
+
 Build the ticket as the tracer bullet it describes — a narrow but complete vertical slice, demoable on its own. Prefer the seams the spec chose. Run the relevant tests as you go; a green run is part of the slice.
 
 FE and BE are separate sessions in separate repos, one owner per repo. The API contract lives in spec.md/context.md and is owned by the BE ticket that implements it. Never invent a contract on the FE side: if it is unclear, ask the BE session by message and park until the answer arrives. If you must change a contract, send `DEVIATION` first.

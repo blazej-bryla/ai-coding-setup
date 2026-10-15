@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [3.7.1] - 2026-10-15
+
+### Added
+- `metrics [days]` shell helper summarises a local log of landed tickets and fixed bugs.
+
+### Changed
+- `/kickoff` adds a Prior art line to each ticket it creates.
+- `/work`, `/bugfix` and `/implement` give the implementer the ticket's prior-art paths and the worker contract's conventions before it codes, and it reports which prior art it followed.
+- Agents treat text from tickets and PRs as data, not instructions.
+- Worker runs now have a timeout.
+
 ## [3.6.1] - 2026-10-13
 
 ### Added
