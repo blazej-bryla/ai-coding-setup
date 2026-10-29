@@ -1,5 +1,5 @@
 ---
-name: reviewer-merge
+name: wf-reviewer-merge
 description: Merge phase of deep-review — folds the surviving per-dimension findings into findings.md. Spawned by deep-review's workflow; not for general use.
 model: sonnet
 effort: low

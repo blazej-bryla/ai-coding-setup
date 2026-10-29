@@ -1,12 +1,12 @@
 #!/bin/bash
-# PreToolUse (matcher: Bash) hook (v3.4.1) — runs alongside rtk-guard.sh.
+# PreToolUse (matcher: Bash) hook (v3.8) — runs alongside rtk-guard.sh.
 # Agents never start or kill dev servers and never run tests in watch mode (WORKFLOW.md: servers are
 # the human's, `wts`). Each segment of the command (split on && || ; | and newlines, past leading
 # VAR=val / env / time / sudo / xargs / rtk) is checked; a hit → deny with a one-line reason.
 # Heredoc bodies and quoted strings are blanked first, so commit messages and echo text don't trip it.
-# Fails open: any internal error → logged to ~/.agents/rules/errors.log, command allowed.
+# Fails open: any internal error → logged to ~/.agents/hooks-errors.log, command allowed.
 set -u
-ERRLOG=${RULES_DIR:-$HOME/.agents/rules}/errors.log
+ERRLOG=$HOME/.agents/hooks-errors.log
 logerr() { printf '%s\terror\tbash-guard\t%s\n' "$(date '+%F %T')" "$*" >>"$ERRLOG" 2>/dev/null; exit 0; }
 trap 'logerr "unexpected failure (line $LINENO)"' ERR
 
@@ -16,8 +16,8 @@ deny() {
 }
 # server/process/watch patterns: lib/config.sh (WT_SERVER_CMD_RE, WT_SERVER_PROC_RE, WT_SERVER_PROC_NAMES, WT_WATCH_CMD_RE)
 . "$(dirname "$0")/lib/config.sh"
-SERVER='Dev servers are the human'"'"'s: ask them to run `wts <slug> <side>`'
-KILL='Dev servers are the human'"'"'s: ask them to run `wts <slug> <side> --take`'
+SERVER='Dev servers are the human'"'"'s: ask them to run `wts <slug> fe|be`'
+KILL='Dev servers are the human'"'"'s: ask them to run `wts <slug> fe --take`'
 WATCH="Run tests without watch mode: $WT_TEST_CMD"
 
 cmd=$(jq -r '.tool_input.command // empty' 2>/dev/null) || logerr "bad hook input"

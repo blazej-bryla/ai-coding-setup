@@ -4,6 +4,8 @@
 #   wtconf                 every setting, NAME=value per line
 #   wtconf NAME [NAME…]    the named settings, NAME=value per line
 #   wtconf -v NAME         the bare value of one setting
+#   wtconf --ports [DIR]   this worktree's FE_PORT / BE_PORT (same formula as the WorktreeCreate hook),
+#                          REMOTE_FE_PORT, and FE_URL from .shots/.fe-url when `wts` runs a FE there
 #
 # Skills call it instead of relying on the session's environment.
 set -euo pipefail
@@ -12,6 +14,13 @@ set -euo pipefail
 all() { sed -n 's/^: "\${\([A-Z_][A-Z0-9_]*\):=.*/\1/p' "$(cd "$(dirname "$0")/.." && pwd)/hooks/lib/config.sh"; }
 ok() { case "$1" in *[!A-Z0-9_]*|'') echo "wtconf: bad name '$1'" >&2; exit 2 ;; esac; }
 
+if [ "${1:-}" = --ports ]; then
+  d=${2:-$(git rev-parse --show-toplevel)}
+  off=$(( $(printf %s "$(basename "$d")" | cksum | cut -d' ' -f1) % 40 ))
+  echo "FE_PORT=$((WT_FE_PORT_BASE + off))"; echo "BE_PORT=$((WT_BE_PORT_BASE + off))"; echo "REMOTE_FE_PORT=$WT_REMOTE_FE_PORT"
+  [ -s "$d/.shots/.fe-url" ] && echo "FE_URL=$(cat "$d/.shots/.fe-url")"
+  exit 0
+fi
 if [ "${1:-}" = -v ]; then ok "${2:-}"; printf '%s\n' "${!2-}"; exit 0; fi
 names=("$@"); [ $# -gt 0 ] || names=($(all))
 for n in "${names[@]}"; do ok "$n"; printf '%s=%s\n' "$n" "${!n-}"; done

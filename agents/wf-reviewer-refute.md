@@ -1,5 +1,5 @@
 ---
-name: reviewer-refute
+name: wf-reviewer-refute
 description: Refute phase of deep-review — tries to disprove one dimension's findings against the actual code. Spawned by deep-review's workflow; not for general use.
 model: sonnet
 effort: high

@@ -1,5 +1,5 @@
 ---
-name: Explore
+name: wf-explore
 description: MUST BE USED for codebase search and file discovery — "where does X live", "what calls Y", "how does this module work", "find the prior art for Z". Use proactively before planning or implementing anything in unfamiliar code. Returns a synthesis (paths, call chains, patterns, constraints), never file dumps. Read-only: it locates and explains code, it does not review, judge, or change it.
 disallowedTools: Write, Edit, NotebookEdit
 model: sonnet

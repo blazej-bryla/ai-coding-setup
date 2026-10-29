@@ -1,6 +1,4 @@
 .DS_Store
 scratch/
 friction.log
-rules/*.log
-rules/findings-log.jsonl
-mods/*/.claude-plugin/types/
+hooks-errors.log

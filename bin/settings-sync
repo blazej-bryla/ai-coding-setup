@@ -11,6 +11,8 @@
 # keys that exist only in the live file (written by /config, e.g. agentPushNotifEnabled) are kept.
 # Arrays are not merged: an array from the repo replaces the live one. That covers hooks and
 # permissions, which /config never writes, so the repo file is their single source — intended.
+# Removal: a key set to null in the repo file is deleted from the merged result (and so from the repo
+# file once it catches up) — the way to drop a key the live file still has.
 # This script never writes ~/.claude/settings.json; the user applies it with the printed command.
 set -euo pipefail
 
@@ -28,9 +30,9 @@ esac
 jq -e . "$REPO" >/dev/null || { echo "settings-sync: $REPO does not parse" >&2; exit 2; }
 if [ -f "$LIVE" ]; then
   jq -e . "$LIVE" >/dev/null || { echo "settings-sync: $LIVE does not parse" >&2; exit 2; }
-  merged=$(jq -s '.[1] * .[0]' "$REPO" "$LIVE")
+  merged=$(jq -s '.[1] * .[0] | del(.. | select(. == null))' "$REPO" "$LIVE")
 else
-  merged=$(jq . "$REPO")
+  merged=$(jq 'del(.. | select(. == null))' "$REPO")
 fi
 printf '%s\n' "$merged" | jq -e 'type == "object"' >/dev/null || { echo "settings-sync: merge did not produce a JSON object" >&2; exit 2; }
 

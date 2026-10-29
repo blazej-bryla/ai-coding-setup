@@ -39,7 +39,7 @@ if [ "$REPO" != "$HOME/.agents" ]; then
 fi
 
 run mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
-for d in "$REPO"/skills/*/; do d=${d%/}; link "$d" "$CLAUDE/skills/${d##*/}"; done
+for d in "$REPO"/skills/*/; do d=${d%/}; [ -f "$d/SKILL.md" ] || continue; link "$d" "$CLAUDE/skills/${d##*/}"; done   # skills/_shared is read by path, not linked
 for f in "$REPO"/agents/*.md; do link "$f" "$CLAUDE/agents/${f##*/}"; done
 run chmod +x "$REPO"/hooks/*.sh "$REPO"/bin/* "$REPO"/scripts/* "$REPO"/.githooks/*
 
@@ -59,8 +59,8 @@ cat <<'NEXT'
 
 Next (once):
   1. Third-party skills/plugins the workflow calls — see README "Third-party pieces".
-  2. Hooks + mod: merge the README "settings.json" snippet into ~/.claude/settings.json.
+  2. Hooks: merge the README "settings.json" snippet into ~/.claude/settings.json.
   3. Config: cp config.example.zsh config.local.zsh, fill it in; source shell/worktrees.zsh from ~/.zshrc;
      bin/wtconf shows the effective values.
-  4. Rules: rules/<FE repo dir name>.json and rules/<BE repo dir name>.json (rules/my-frontend.json is an example).
+  4. Worker contract: projects/<repo dir name>.md with a Conventions section per app (imported via CLAUDE.local.md).
 NEXT

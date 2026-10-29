@@ -1,15 +1,16 @@
 #!/bin/bash
-# Per-worktree Postgres database for the BE (v3.6).
-# Sourced by worktree-create.sh (BE side); run directly by `wtdb` / `wtrm` / `wtclean`:
-#   db.sh ensure <worktree-dir> [--fresh]   create <worktree>/.env's DB name, copy the source db, migrate
+# Per-worktree Postgres database for the BE (v3.8: created lazily, when the BE is first run).
+# Run by `wts <slug> be` / `wtdb` / `wtrm` / `wtclean`:
+#   db.sh ensure <worktree-dir> [--fresh]   create the DB named in <worktree>/$WT_BE_DIR/.env, copy the source db, migrate
 #   db.sh exists <name>                     exit 0 if the db exists (1 no, 2 container down / error)
 #   db.sh drop <name>                       drop it — only $WT_DB_PREFIX names, never the source db
 # Config (lib/config.sh): WT_DB_CONTAINER, WT_DB_PREFIX, WT_DB_SOURCE_ENV, DB_NAME_VARS (first = the DB
 # name), WT_DB_USER_VAR, WT_DB_PASSWORD_VAR, WT_DB_MIGRATE_CMD. Source db, user and password come from
 # $WT_DB_SOURCE_ENV. Everything runs inside the container (`docker exec`), so host/port don't matter.
-# All output goes to stderr (the WorktreeCreate hook prints only the worktree path on stdout).
+# All output goes to stderr. A pre-v3.8 <slug>-be worktree keeps its .env at the root; that still works.
 
 . "$(dirname "${BASH_SOURCE[0]}")/config.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/node.sh"
 _wtdb_var=${DB_NAME_VARS%% *}
 
 _wtdb_say() { echo "wtdb: $*" >&2; }
@@ -45,10 +46,11 @@ wt_db_drop() {
 
 # wt_db_ensure <worktree-dir> [--fresh]
 wt_db_ensure() {
-  local dir=${1:-} fresh=${2:-} t
-  [ -f "$dir/.env" ] || { _wtdb_say "WARNING: no .env in '$dir'"; return 1; }
-  t=$(_wtdb_env "$dir/.env" "$_wtdb_var")
-  [ -n "$t" ] || { _wtdb_say "WARNING: no $_wtdb_var in $dir/.env"; return 1; }
+  local dir=${1:-} fresh=${2:-} t env
+  env="$dir/$WT_BE_DIR/.env"; [ -f "$env" ] || env="$dir/.env"
+  [ -f "$env" ] || { _wtdb_say "WARNING: no $WT_BE_DIR/.env in '$dir'"; return 1; }
+  t=$(_wtdb_env "$env" "$_wtdb_var")
+  [ -n "$t" ] || { _wtdb_say "WARNING: no $_wtdb_var in $env"; return 1; }
   _wtdb_init || return 2
   _wtdb_safe "$t" || return 1
   if _wtdb_has "$t"; then _wtdb_say "db exists: $t"; return 0; fi
@@ -71,7 +73,7 @@ wt_db_ensure() {
   [ -n "$WT_DB_MIGRATE_CMD" ] || { _wtdb_say "no WT_DB_MIGRATE_CMD configured — $t not migrated"; return 0; }
   [ -d "$dir/node_modules" ] || { _wtdb_say "WARNING: no node_modules in $dir — run the setup command, then $WT_DB_MIGRATE_CMD there"; return 1; }
   ( cd "$dir" && set +u \
-    && { n="${NVM_DIR:-$HOME/.nvm}/nvm.sh"; [ ! -s "$n" ] || { . "$n" && nvm use --silent >&2; } || true; } \
+    && wt_node_use "$dir" >&2 \
     && eval "$WT_DB_MIGRATE_CMD" >&2 ) \
     || { _wtdb_say "WARNING: '$WT_DB_MIGRATE_CMD' failed in $dir — db $t is there, migrate it by hand"; return 1; }
   _wtdb_say "migrated $t"

@@ -3,6 +3,28 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.2.2] - 2026-10-29
+
+### Added
+- `/wf-init` sets up a project for the workflow, and `wfprofile` manages per-project profiles.
+- New `/deslop` skill for cleaning up a change.
+- New `wf-` variants of the context-gatherer, explore, and implementer agents.
+### Changed
+- Monorepo is now the only worktree mode: `wt <branch> [prompt]` creates one worktree and session for the repo, and `wt` stops with a one-line message when the main checkout is on that branch.
+- The `fe` and `be` side argument to `wt` still works but is ignored.
+- Worktree setup copies the env files for both apps and sets the frontend port in its `.env.local`.
+- The core agents are slimmer.
+- `/pr` uses the project's own `pr` skill when it has one.
+- Bundled third-party skills are updated to a newer release.
+- Skills check a suspected issue cause before acting on it.
+- Review replies agree with what is right before raising objections.
+- Skills read files in full instead of excerpts.
+- Skills follow a new dependency rule.
+- Teaching responses use a briefer format.
+### Fixed
+- Worktree setup runs on the repo's Node version, and it checks and logs the result.
+- Commit and PR titles no longer get an area tag.
+
 ## [3.7.1] - 2026-10-15
 
 ### Added

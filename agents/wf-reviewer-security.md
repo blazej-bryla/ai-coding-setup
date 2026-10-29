@@ -1,8 +1,8 @@
 ---
-name: reviewer-security-max
-description: Security reviewer for one change set, max effort — used when the classifier flags touches_auth. Spawned by deep-review (and its Reuse callers /work, /implement, /bugfix); not for general use.
+name: wf-reviewer-security
+description: Security reviewer for one change set (default tier). Spawned by deep-review (and its Reuse callers /work, /bugfix); not for general use.
 model: opus
-effort: max
+effort: xhigh
 disallowedTools: NotebookEdit
 ---
 

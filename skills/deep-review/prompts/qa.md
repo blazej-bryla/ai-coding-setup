@@ -24,19 +24,19 @@ For each item, find evidence in the diff — and the code and tests it touches �
 - **Scope creep** — behaviour nobody asked for, or something declared out-of-scope implemented anyway → `question` (or `thought` if harmless)
 - **Requirement delivered and tested** → at most 1–2 `praise` entries
 
-For `Verify by: ui` criteria: when the context block names a running dev server for the change under review, verify them in the browser instead of judging by reading — ONE agent-browser batch in the task's session (`<S>` = `<slug>-<side>`):
+For `Verify by: ui` criteria: when the context block gives BOTH `Dev server:` (a URL, not `none`) and `Browser:` (the agent-browser command prefix — session and saved login included, e.g. `agent-browser --session <slug> --state ~/.agent-browser/auth-base.json --restore`), verify them in the browser instead of judging by reading — ONE batch with that prefix (`<B>` = the `Browser:` value):
 
 ```
-agent-browser --session <S> --state ~/.agent-browser/auth-base.json --restore batch \
+<B> batch \
   "set viewport 1440 900" "open <server><route>" "wait --text '<expectation>'" "snapshot -i -c" \
   "console" "errors" "network requests --status 400-599"
 ```
 
-Write `verified in browser` or `not verified — no server` in the evidence field. Login screen (`~/.agents/bin/wtconf -v WT_LOGIN_SCREEN_HINT`) → never type credentials: `agent-browser --session <S> close` and record `not verified — login needed (ablogin)`; you cannot ask the user. Never take screenshots here — text evidence only.
+Write `verified in browser` or `not verified — no server` in the evidence field (either field missing → `not verified in browser`, judged by reading). Never start, stop or restart a server. Login screen (`~/.agents/bin/wtconf -v WT_LOGIN_SCREEN_HINT`) → never type credentials: `<B> close` and record `not verified — login needed (ablogin)`; you cannot ask the user. Never take screenshots here — text evidence only.
 
-**Accessibility, UI tickets only** (a `Verify by: ui` line): on each such route, in the same session, `agent-browser --session <S> --state ~/.agent-browser/auth-base.json --restore a11y --tags wcag2a,wcag2aa --json`; keep only violations with `impact` `serious` or `critical`. If a baseline FE is configured (`~/.agents/bin/wtconf -v WT_BASELINE_FE_URL` is non-empty — the deployed base branch), run the same audit on `<baseline><route>` and report only violations NEW versus the baseline (a rule `id` + node `target` not present there) → `issue`, `blocking: no`. Without a baseline URL, list them as `thought`, never blocking. Evidence: rule id, impact, the `target` selector, `helpUrl`.
+**Accessibility, UI tickets only** (a `Verify by: ui` line, and the browser check above ran): on each such route, in the same session, `<B> a11y --tags wcag2a,wcag2aa --json`; keep only violations with `impact` `serious` or `critical`. If a baseline FE is configured (`~/.agents/bin/wtconf -v WT_BASELINE_FE_URL` is non-empty — the deployed base branch), run the same audit on `<baseline><route>` and report only violations NEW versus the baseline (a rule `id` + node `target` not present there) → `issue`, `blocking: no`. Without a baseline URL, list them as `thought`, never blocking. Evidence: rule id, impact, the `target` selector, `helpUrl`.
 
-When done: `agent-browser --session <S> close` — never `close --all`.
+When done: `<B> close` — never `close --all`.
 
 Rules:
 

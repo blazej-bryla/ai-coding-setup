@@ -1,6 +1,6 @@
 ---
-name: reviewer-light
-description: Single-pass generalist reviewer for small diffs. Spawned by deep-review (and its Reuse callers /work, /implement, /bugfix); not for general use.
+name: wf-reviewer-light
+description: Single-pass generalist reviewer for small diffs. Spawned by deep-review (and its Reuse callers /work, /bugfix); not for general use.
 model: opus
 effort: high
 disallowedTools: NotebookEdit

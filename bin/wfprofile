@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# wfprofile — which steps ("slots") of my workflow this repo hands to its own skills. Read-only on the repo.
+# Profile: ~/.agents/profiles/<id>.json, id = the repo's origin URL (host/owner/name, `/` → `-`), so every
+# clone and worktree of the repo finds the same profile. Written by /wf-init.
+#
+#   wfprofile <slot>…        resolution per slot, key=value lines (one block per slot, blank line between)
+#   wfprofile --check        every slot (exit 3 on a stop)
+#   wfprofile --id           id, profile path, name, main checkout, ref
+#   wfprofile --env          the env slot as `export NAME='value'` lines (hooks/lib/config.sh evals them)
+#   wfprofile --scan         the project's agent setup at the ref: path<TAB>sha256 (for /wf-init)
+#   wfprofile --hash PATH…   path<TAB>sha256 of every file under each PATH at the ref (for /wf-init)
+#   wfprofile --diff         profile vs project now: fingerprinted files changed or gone, agent-setup files
+#                            added / removed / changed since the profile was written (for /wf-init)
+#
+# Slots: plan.grill plan.tickets build.implement build.tdd review pr.body pr.create notify.summary conventions env
+# Per slot `use`: mine | none | project:<path>[,<path>…] | mine+project:<path>[,…]; `overrides` = text my skill
+# states to the project skill; `fingerprints` = sha256 of every project file used, taken at the profile's `ref`
+# (a git ref of the main checkout, e.g. the default branch — what is checked out there doesn't matter).
+#
+# Output per slot: slot= use=(mine|project|mine+project|none) file=<entry file, one line each> overrides=
+# Project files are read from the ref into ~/.agents/scratch/.profiles/<id>/ (file= points there, siblings
+# included), never from the working tree.
+#
+# Fail-safe: no profile, no origin, not a git repo, missing jq or a profile that doesn't parse → one `note=`
+# line and every slot `mine` (exit 0). A fingerprint that no longer matches, a project path or ref that is
+# gone → one `stop=` line naming the slot and the file (exit 3): the skill stops and says run /wf-init.
+set -u
+
+SLOTS="plan.grill plan.tickets build.implement build.tdd review pr.body pr.create notify.summary conventions env"
+PROFILES=${WF_PROFILES_DIR:-$HOME/.agents/profiles}
+CACHE=$HOME/.agents/scratch/.profiles
+DIR=${CLAUDE_PROJECT_DIR:-$PWD}
+HINT="no profile for this repo — using my defaults; run /wf-init to map the project's skills"
+
+sha() { shasum -a 256 | cut -d' ' -f1; }
+all_mine() {  # all_mine <note> <slot>…
+  echo "note=$1"
+  [ -n "${name:-}" ] && echo "name=$name"
+  local s; for s in "${@:2}"; do printf 'slot=%s\nuse=mine\n\n' "$s"; done
+  exit 0
+}
+
+repo_id() {  # origin URL → id
+  local u; u=$(git -C "$1" remote get-url origin 2>/dev/null) || return 1
+  u=${u%.git}; u=${u#*://}; u=${u#*@}; u=${u/://}
+  printf '%s' "$u" | tr 'A-Z/' 'a-z-'
+}
+main_checkout() { git -C "$1" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p'; }
+
+# ---- resolve the repo and its profile -------------------------------------------------------------
+mode=${1:-}
+case "$mode" in
+  "") echo "usage: wfprofile <slot>… | --check | --id | --env | --scan | --hash PATH… | --diff" >&2; exit 2 ;;
+  --check) set -- $SLOTS; mode=slots ;;
+  --*) shift ;;
+  *) mode=slots ;;
+esac
+if [ "$mode" = slots ]; then
+  for s in "$@"; do case " $SLOTS " in *" $s "*) ;; *) echo "wfprofile: unknown slot '$s' (slots: $SLOTS)" >&2; exit 2 ;; esac; done
+fi
+
+if [ "$mode" = --env ]; then        # silent fallbacks: config.sh calls this on every hook run
+  command -v jq >/dev/null || exit 0
+  id=$(repo_id "$DIR") && [ -f "$PROFILES/$id.json" ] && prof=$PROFILES/$id.json
+  [ -z "${prof:-}" ] && [ -n "${WF_USE_DEFAULT_PROFILE:-}" ] && [ -n "${WF_DEFAULT_PROFILE:-}" ] \
+    && [ -f "$PROFILES/$WF_DEFAULT_PROFILE.json" ] && prof=$PROFILES/$WF_DEFAULT_PROFILE.json
+  [ -n "${prof:-}" ] || exit 0
+  jq -r '.slots.env.values // {} | to_entries[] | select(.key | test("^[A-Z_][A-Z0-9_]*$"))
+         | "export \(.key)=\(.value | tostring | sub("^~"; env.HOME) | @sh)"' "$prof" 2>/dev/null
+  exit 0
+fi
+
+command -v jq >/dev/null || { [ "$mode" = slots ] && all_mine "wfprofile: jq not found — using my defaults" "$@"; echo "wfprofile: jq not found" >&2; exit 2; }
+git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1 || { [ "$mode" = slots ] && all_mine "not a git repo — using my defaults" "$@"; echo "wfprofile: not a git repo" >&2; exit 2; }
+id=$(repo_id "$DIR") || { [ "$mode" = slots ] && all_mine "no origin remote — using my defaults" "$@"; echo "wfprofile: no origin remote" >&2; exit 2; }
+prof=$PROFILES/$id.json
+root=$(main_checkout "$DIR")
+
+if [ -f "$prof" ]; then
+  jq -e '.slots | type == "object"' "$prof" >/dev/null 2>&1 \
+    || { [ "$mode" = slots ] && all_mine "wfprofile: $prof doesn't parse — using my defaults" "$@"; echo "wfprofile: $prof doesn't parse" >&2; exit 2; }
+  ref=$(jq -r '.ref // empty' "$prof")
+  name=$(jq -r '.name // empty' "$prof")
+fi
+ref=${ref:-$(git -C "$root" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}
+ref=${ref:-HEAD}
+name=${name:-$(basename "$root")}
+
+files_at() {  # files_at <path> — every file under path at ref (a file → itself); nothing when gone
+  git -C "$root" ls-tree -r --name-only "$ref" -- "$1" 2>/dev/null
+}
+blob_sha() { git -C "$root" show "$ref:$1" 2>/dev/null | sha; }
+
+case "$mode" in
+  --id)
+    printf 'id=%s\nprofile=%s\nexists=%s\nname=%s\nroot=%s\nref=%s\n' "$id" "$prof" "$([ -f "$prof" ] && echo yes || echo no)" "$name" "$root" "$ref"
+    exit 0 ;;
+  --hash)
+    for p in "$@"; do f=$(files_at "$p"); [ -n "$f" ] || { echo "wfprofile: $p not found at $ref" >&2; exit 3; }
+      for x in $f; do printf '%s\t%s\n' "$x" "$(blob_sha "$x")"; done; done
+    exit 0 ;;
+  --scan)
+    git -C "$root" ls-tree -r --name-only "$ref" 2>/dev/null | grep -E \
+      '^(\.agents/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|\.claude/agents/[^/]+\.md|\.claude/(settings\.json|launch\.json)|\.mcp\.json|skills-lock\.json|(([^/]+/){0,2})(AGENTS|CLAUDE)\.md|\.github/(pull_request_template\.md|PULL_REQUEST_TEMPLATE/.*|labeler\.yml)|\.cursor/rules/.*)$' \
+      | while read -r x; do printf '%s\t%s\n' "$x" "$(blob_sha "$x")"; done
+    exit 0 ;;
+  --diff)
+    [ -f "$prof" ] || { echo "no profile ($prof)"; exit 0; }
+    { jq -r '.slots | to_entries[] | .key as $s | (.value.fingerprints // {}) | to_entries[] | "\($s)\t\(.key)\t\(.value)"' "$prof" \
+      | while IFS=$'\t' read -r s p h; do
+          now=$(files_at "$p"); [ -n "$now" ] || { echo "gone     $s  $p"; continue; }
+          [ "$(blob_sha "$p")" = "$h" ] || echo "changed  $s  $p"
+        done
+    scan=$("$0" --scan); seen=$(jq -r '.discovered // {} | to_entries[] | "\(.key)\t\(.value)"' "$prof")
+    join -t $'\t' -a1 -a2 -e '-' -o 0,1.2,2.2 <(printf '%s\n' "$seen" | sort) <(printf '%s\n' "$scan" | sort) \
+      | while IFS=$'\t' read -r p old new; do
+          [ -n "$p" ] || continue
+          if [ "$old" = - ]; then echo "added    setup  $p"
+          elif [ "$new" = - ]; then echo "removed  setup  $p"
+          elif [ "$old" != "$new" ]; then echo "changed  setup  $p"; fi
+        done; } > "${TMPDIR:-/tmp}/wfprofile-diff.$$"
+    if [ -s "${TMPDIR:-/tmp}/wfprofile-diff.$$" ]; then cat "${TMPDIR:-/tmp}/wfprofile-diff.$$"; else echo "no differences — profile matches the project at $ref"; fi
+    rm -f "${TMPDIR:-/tmp}/wfprofile-diff.$$"
+    exit 0 ;;
+esac
+
+# ---- slots -------------------------------------------------------------------------------------------
+[ -f "$prof" ] || all_mine "$HINT" "$@"
+git -C "$root" rev-parse -q --verify "$ref^{commit}" >/dev/null \
+  || { echo "stop=profile ref '$ref' not found in $root — run /wf-init"; exit 3; }
+
+out=""
+for s in "$@"; do
+  use=$(jq -r --arg s "$s" '.slots[$s].use // "mine"' "$prof")
+  ov=$(jq -r --arg s "$s" '.slots[$s].overrides // "" | gsub("\n"; " ")' "$prof")
+  kind=${use%%:*}; paths=""
+  case "$use" in project:*|mine+project:*) paths=${use#*:} ;; mine|none) ;; *)
+    echo "stop=step $s has an unknown use '$use' in $prof — run /wf-init"; exit 3 ;; esac
+  block="slot=$s"$'\n'"use=$kind"$'\n'
+  IFS=, read -ra plist <<<"$paths"
+  for p in ${plist[@]+"${plist[@]}"}; do
+    f=$(files_at "$p")
+    [ -n "$f" ] || { echo "stop=step $s changed in the project — $p is gone at $ref — run /wf-init"; exit 3; }
+    for x in $f; do
+      want=$(jq -r --arg s "$s" --arg x "$x" '.slots[$s].fingerprints[$x] // empty' "$prof")
+      have=$(blob_sha "$x")
+      [ -n "$want" ] || { echo "stop=step $s changed in the project — $x is new at $ref (no fingerprint) — run /wf-init"; exit 3; }
+      [ "$want" = "$have" ] || { echo "stop=step $s changed in the project — $x differs at $ref — run /wf-init"; exit 3; }
+      mkdir -p "$CACHE/$id/$(dirname "$x")" && git -C "$root" show "$ref:$x" > "$CACHE/$id/$x"
+    done
+    for x in $(jq -r --arg s "$s" --arg p "$p" '.slots[$s].fingerprints | keys[] | select(. == $p or startswith($p + "/"))' "$prof"); do
+      printf '%s\n' $f | grep -qxF "$x" || { echo "stop=step $s changed in the project — $x is gone at $ref — run /wf-init"; exit 3; }
+    done
+    entry=$p; printf '%s\n' $f | grep -qxF "$p/SKILL.md" && entry=$p/SKILL.md
+    block+="file=$CACHE/$id/$entry"$'\n'
+  done
+  [ "$s" = env ] && block+="source=$prof (slots.env.values)"$'\n'
+  [ -n "$ov" ] && block+="overrides=$ov"$'\n'
+  out+="$block"$'\n'
+done
+printf 'profile=%s ref=%s name=%s\n\n%s' "$id" "$ref" "$name" "$out"
