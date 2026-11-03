@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.3.3] - 2026-11-03
+
+### Added
+- Herdr's PR Radar panel groups your PRs by review state, with Review (`/deep-review`) and Address (`/address-review`) actions and a toast and sound when a new review is requested.
+- Herdr can start work from a Linear ticket: Kickoff switches the main checkout to the ticket's base branch, and Work runs `/work` in a worktree when tickets exist.
+- Herdr groups tasks and shows a dev-server footer.
+### Changed
+- Herdr board layout and keys are versioned mods, so each release carries its own copy.
+### Fixed
+- The `wts` dev command exports the API variable for every step.
+- The `wts` dev command builds contracts before starting dev servers.
+
 ## [4.2.2] - 2026-10-29
 
 ### Added

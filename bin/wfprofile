@@ -6,6 +6,8 @@
 #   wfprofile <slot>…        resolution per slot, key=value lines (one block per slot, blank line between)
 #   wfprofile --check        every slot (exit 3 on a stop)
 #   wfprofile --id           id, profile path, name, main checkout, ref
+#   wfprofile --repo-path OWNER/NAME   the local main checkout of that GitHub repo (a profile whose origin
+#                            matches, its env MONO_REPO); exit 1 when no profile knows it. Works from any dir
 #   wfprofile --env          the env slot as `export NAME='value'` lines (hooks/lib/config.sh evals them)
 #   wfprofile --scan         the project's agent setup at the ref: path<TAB>sha256 (for /wf-init)
 #   wfprofile --hash PATH…   path<TAB>sha256 of every file under each PATH at the ref (for /wf-init)
@@ -50,13 +52,27 @@ main_checkout() { git -C "$1" worktree list --porcelain 2>/dev/null | sed -n '1s
 # ---- resolve the repo and its profile -------------------------------------------------------------
 mode=${1:-}
 case "$mode" in
-  "") echo "usage: wfprofile <slot>… | --check | --id | --env | --scan | --hash PATH… | --diff" >&2; exit 2 ;;
+  "") echo "usage: wfprofile <slot>… | --check | --id | --repo-path OWNER/NAME | --env | --scan | --hash PATH… | --diff" >&2; exit 2 ;;
   --check) set -- $SLOTS; mode=slots ;;
   --*) shift ;;
   *) mode=slots ;;
 esac
 if [ "$mode" = slots ]; then
   for s in "$@"; do case " $SLOTS " in *" $s "*) ;; *) echo "wfprofile: unknown slot '$s' (slots: $SLOTS)" >&2; exit 2 ;; esac; done
+fi
+
+if [ "$mode" = --repo-path ]; then  # by the profiles' origin, not by $DIR: callers (Herdr panels) aren't inside the repo
+  want=$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z')
+  case "$want" in */*) ;; *) echo "usage: wfprofile --repo-path OWNER/NAME" >&2; exit 2 ;; esac
+  command -v jq >/dev/null || { echo "wfprofile: jq not found" >&2; exit 1; }
+  for p in "$PROFILES"/*.json; do
+    [ -f "$p" ] || continue
+    o=$(jq -r '.origin // empty' "$p" 2>/dev/null); o=${o%.git}; o=${o#*://}; o=${o#*@}; o=${o/://}
+    [ "$(printf '%s' "$o" | tr 'A-Z' 'a-z')" = "github.com/$want" ] || continue
+    d=$(jq -r '.slots.env.values.MONO_REPO // empty' "$p" 2>/dev/null); d=${d/#\~/$HOME}
+    [ -n "$d" ] && [ -d "$d" ] && [ "$(repo_id "$d")" = "$(basename "$p" .json)" ] && { printf '%s\n' "$d"; exit 0; }
+  done
+  echo "wfprofile: no profile knows $1" >&2; exit 1
 fi
 
 if [ "$mode" = --env ]; then        # silent fallbacks: config.sh calls this on every hook run

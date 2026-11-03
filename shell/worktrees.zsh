@@ -47,7 +47,7 @@ _holder() { local pid; pid=$(_listener "$1") || return 1; [ -n "$pid" ] && _pcwd
 
 # wts <slug|branch> <fe|be> [--local|--remote] [--port N] [--take]
 #   both: `nvm use` the repo's .nvmrc / engines.node, deps present (else: fix, `wt <slug>` reinstalls)
-#   be: the per-worktree DB first (created lazily, here), the BE extras once, then the BE on its PORT
+#   be: the per-worktree DB first (created lazily, here), the BE extras once, then the BE on its PORT (.shots/.be-url while it runs)
 #   fe: the FE extras once (e.g. e2e browsers), then: this worktree's BE listening → local API, else the remote API — decided now; env files untouched
 wts() {
   local slug=$1 side=$2 mode="" port="" take=""; shift 2
@@ -65,6 +65,12 @@ wts() {
       eval "$WT_BE_SETUP_CMD" || { echo "wts: BE setup failed — $WT_BE_SETUP_CMD"; return 1; }
       mkdir -p .shots && : > .shots/.be-setup
     fi
+    local bport; bport=$(_port "$WT_BE_DIR")
+    [ -n "$bport" ] || bport=$(( WT_BE_PORT_BASE + $(printf %s "$key" | cksum | cut -d' ' -f1) % 40 ))   # worktree made before the hook
+    setopt local_options local_traps
+    local burlf="$PWD/.shots/.be-url"
+    mkdir -p .shots && echo "http://localhost:$bport" > "$burlf"   # the Herdr board reads it, like .fe-url
+    trap "rm -f '$burlf'" EXIT INT TERM
     eval "$WT_BE_DEV_CMD"; return
   fi
   if [ -n "$WT_FE_SETUP_CMD" ] && [ ! -f .shots/.fe-setup ]; then   # once per worktree
@@ -111,7 +117,8 @@ wts() {
   mkdir -p .shots && echo "http://localhost:$port" > "$urlf"   # skills read AFTER_URL from here
   trap "rm -f '$urlf'" EXIT INT TERM
   local PORT=$port
-  eval "$FE_API_VAR=\$api $WT_FE_DEV_CMD"
+  local -x "$FE_API_VAR=$api"   # exported for every step of WT_FE_DEV_CMD (e.g. a build step before the dev server), not only the first
+  eval "$WT_FE_DEV_CMD"
 }
 
 # wtwho — who holds the shared remote-API FE port, and which task worktrees run a FE / BE on their own ports
@@ -209,4 +216,3 @@ friction() {
     | "\(.n)× \(.what)  (last \(.last[0:10]))",
       (.items[] | "    \(.date[0:10]) \(.slug)-\(.side) [\(.cost)] — \(.workaround)")' "$f"
 }
-
