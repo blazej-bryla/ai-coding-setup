@@ -81,7 +81,8 @@ agent-browser CLI, headed, viewport 1440×900.
   in parallel.
 - A login screen means the state expired: agents never type credentials — they ask you to run
   `ablogin` and wait.
-- Each step closes its own session (never `close --all`). Screenshots go to `<worktree>/.shots/`
+- Skills check pages through `bin/abcheck` (one batch, one PASS/FAIL line per check; screenshots
+  are read only when a check failed). Each step closes its own session (never `close --all`). Screenshots go to `<worktree>/.shots/`
   (kept out of git). With a baseline FE configured, `/pr` adds BEFORE shots and a pixel-diff column. Given
   `Dev server:` and `Browser:` in its context block, the QA reviewer checks UI criteria in the browser
   and runs an accessibility audit (WCAG A/AA, serious/critical) on UI routes.
@@ -145,3 +146,14 @@ the alternative lives.
 ## v4.2 — from pi
 
 - `/deslop` (from earendil-works/pi, MIT) plus rules: an issue's root cause is a hypothesis, replies say agree/disagree first, files are read in full, dependencies only when the ticket asks (`deps:` in the report, a question in `/work` before teach), the teach brief as problem → example → solution.
+
+## v4.4 — a leaner orchestrator context
+
+What fills the `/work` session is now capped; the gates, teach, review selection and what is verified are unchanged (`skills/_shared/CONTEXT.md`).
+
+- Browser: `bin/abcheck` runs the verification batch and prints PASS/FAIL per check (expectation, console errors, page errors, failed requests with URLs) instead of the snapshot; screenshots are read only when a check failed or you ask; no `agent-browser --help` in sessions.
+- Workers: `wf-implementer` writes its full report to `scratch/<slug>/reports/<side>-<NN>.md` and hands back ≤ 40 lines; the orchestrator opens the report only on blocked/partial, `open`, `deps:` or `deviation:`.
+- Pass/fail commands: `bin/quiet` (tests, lint, typecheck, build) — one `ok: <cmd> (<n>s)` line, or the last 40 lines on failure; `git push --quiet … | tail -20`.
+- Repo questions go to `wf-explore`; the orchestrator reads with offset/limit or `grep -l`, never `cat`/`sed -n` on source.
+- Scratch: `bin/tickets` lists one line per ticket for the frontier; a ticket file is read when it is landed; `context.md`/`spec.md` once. `findings.md` opens with a summary block (counts + one line per actionable finding) that callers read instead of the whole file.
+- Diffs: `--stat` by default; the full diff only for files a finding or the teach brief points to.

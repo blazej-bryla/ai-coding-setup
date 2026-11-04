@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# tickets — one line per ticket file, for /work's frontier scan (instead of reading every ticket).
+#
+#   tickets <dir|file>…    default: ~/.agents/scratch/<slug>/tickets/{fe,be} for this branch's slug
+#
+#   <side>/<NN> | <status> | blocked by: … | touches: … | <title>[ | branch: … | base: … | base tip: … | pr: … (<pr status>)]
+#
+# Fields come from the ticket's `# NN — title` line and its **Status:**, **Blocked by:**, **Touches:**
+# (story mode also **Branch:**, **Base:**, **Base tip:**, **PR:**, **PR status:**) lines; a missing field
+# prints `-`. Long fields are cut at 120 characters. Read-only.
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+  b=$(git rev-parse --abbrev-ref HEAD)
+  slug=$(printf '%s' "$b" | tr 'A-Z' 'a-z' | grep -oE '[a-z]+-[0-9]+(-[0-9]+)?' | head -1 || true)
+  [ -n "$slug" ] || slug=${b#*/}
+  d="$HOME/.agents/scratch/$slug/tickets"
+  set -- "$d/fe" "$d/be"
+  [ -d "$d/fe" ] || [ -d "$d/be" ] || set -- "$d"
+fi
+
+files=()
+for a in "$@"; do
+  if [ -d "$a" ]; then for f in "$a"/*.md; do [ -e "$f" ] && files+=("$f"); done
+  elif [ -f "$a" ]; then files+=("$a"); fi
+done
+[ ${#files[@]} -gt 0 ] || { echo "tickets: no ticket files in $*" >&2; exit 1; }
+
+awk '
+  function cut(s) { gsub(/`/, "", s); return length(s) > 120 ? substr(s, 1, 120) "…" : s }
+  function val(s) { sub(/^\*\*[^*]+:\*\* */, "", s); return cut(s) }
+  function out(   side, nn, extra) {
+    if (f == "") return
+    side = f; sub(/\/[^\/]*$/, "", side); sub(/.*\//, "", side); if (side != "fe" && side != "be") side = "fe"
+    nn = f; sub(/.*\//, "", nn); sub(/-.*/, "", nn)
+    extra = ""
+    if (br != "") extra = extra " | branch: " br
+    if (bs != "") extra = extra " | base: " bs
+    if (bt != "") extra = extra " | base tip: " bt
+    if (pr != "") extra = extra " | pr: " pr (ps != "" ? " (" ps ")" : "")
+    printf "%s/%s | %s | blocked by: %s | touches: %s | %s%s\n", side, nn, st, bl, to, t, extra
+  }
+  FNR == 1 { if (inlist) to = cut(to); inlist = 0; out(); f = FILENAME; t = "-"; st = "-"; bl = "-"; to = "-"; br = bs = bt = pr = ps = "" }
+  /^# / && t == "-" { t = $0; sub(/^# *[0-9]* *[—-]* */, "", t); t = cut(t) }
+  /^\*\*Status:\*\*/     { st = val($0) }
+  /^\*\*Blocked by:\*\*/ { bl = val($0) }
+  /^\*\*Touches:\*\*/    { to = val($0); inlist = (to == ""); next }
+  inlist && /^- / { p = $0; sub(/^- */, "", p); sub(/ .*/, "", p); gsub(/`/, "", p); to = (to == "" ? p : to ", " p); next }
+  inlist { inlist = 0; to = cut(to == "" ? "-" : to) }
+  /^\*\*Branch:\*\*/     { br = val($0) }
+  /^\*\*Base:\*\*/       { bs = val($0) }
+  /^\*\*Base tip:\*\*/   { bt = val($0) }
+  /^\*\*PR:\*\*/         { pr = val($0) }
+  /^\*\*PR status:\*\*/  { ps = val($0) }
+  END { if (inlist) to = cut(to); out() }
+' "${files[@]}"

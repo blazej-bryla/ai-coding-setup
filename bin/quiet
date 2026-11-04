@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# quiet — run a pass/fail command (tests, lint, typecheck, build) and keep its output out of the context.
+#
+#   quiet <cmd> [args…]     run it; exit with its status
+#   quiet "<cmd args…>"     one string (e.g. a WT_*_TEST_CMD value) — split on whitespace, never
+#                           through a shell: no pipes, redirects, `;`, `&&`, globs or $(…)
+#   quiet -n N …            on failure print the last N lines (default 40)
+#   quiet -C <dir> …        run it in <dir> (a worker's worktree root) — no `cd … &&` needed
+#
+#   success → one line:  ok: <cmd> (<n>s)
+#   failure → FAIL (exit <code>): <cmd> (<n>s), then the last 40 lines of stdout+stderr
+#
+# Leading NAME=value words are passed as environment (CI=1 npm test -w web).
+# Guard: it runs only package/test/lint/build tools (first word: npm pnpm yarn bun npx node tsc turbo
+# nx vitest jest eslint biome make) and refuses the commands settings deny bare (`npm test`,
+# `npx vitest` — watch mode). Never git, gh or anything that writes outside the repo: an allow rule on
+# quiet must not become a way around the permission rules on those.
+set -uo pipefail
+
+lines=40
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n) lines=${2:?quiet: -n needs a number}; shift 2 ;;
+    -C) cd "${2:?quiet: -C needs a directory}" || exit 2; shift 2 ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || { echo "usage: quiet [-n N] [-C dir] <cmd> [args…] | quiet \"<cmd args…>\"" >&2; exit 2; }
+
+if [ $# -eq 1 ]; then
+  case "$1" in *[\;\&\|\<\>\`\$\(\)\*\?]*) echo "quiet: shell syntax in '$1' — pass a plain command" >&2; exit 2 ;; esac
+  set -f; set -- $1; set +f
+fi
+
+envs=()
+while [ $# -gt 0 ] && [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do envs+=("$1"); shift; done
+[ $# -gt 0 ] || { echo "quiet: no command" >&2; exit 2; }
+
+case "$1" in
+  npm|pnpm|yarn|bun|npx|node|tsc|turbo|nx|vitest|jest|eslint|biome|make) ;;
+  *) echo "quiet: '$1' is not a test/lint/typecheck/build tool — run it directly" >&2; exit 2 ;;
+esac
+case "$*" in
+  "npm test"|"npx vitest") echo "quiet: bare '$*' is denied (watch mode) — use the side's test command" >&2; exit 2 ;;
+esac
+
+label="$*"
+[ ${#envs[@]} -gt 0 ] && label="${envs[*]} $label"
+out=$(mktemp "${TMPDIR:-/tmp}/quiet.XXXXXX")
+trap 'rm -f "$out"' EXIT
+
+start=$SECONDS
+if [ ${#envs[@]} -gt 0 ]; then env "${envs[@]}" "$@" >"$out" 2>&1 </dev/null; else "$@" >"$out" 2>&1 </dev/null; fi
+code=$?
+secs=$((SECONDS - start))
+
+if [ $code -eq 0 ]; then
+  echo "ok: $label (${secs}s)"
+else
+  echo "FAIL (exit $code): $label (${secs}s) — last $lines lines:"
+  tail -n "$lines" "$out"
+fi
+exit $code

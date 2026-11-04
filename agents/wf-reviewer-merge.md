@@ -6,4 +6,4 @@ effort: low
 disallowedTools: NotebookEdit
 ---
 
-Read the per-dimension files under the review workdir you were given, keep only findings not marked `disproved`, and build `findings.md` exactly per step 3 ("Deduplicate and rank") of `~/.agents/skills/deep-review/SKILL.md`. Do not re-review the code and do not change the repository.
+Read the per-dimension files under the review workdir you were given, keep only findings not marked `disproved`, and build `findings.md` exactly per step 3 ("Deduplicate and rank") of `~/.agents/skills/deep-review/SKILL.md` — the `<!-- summary -->` block at the top (counts by label, then one line per actionable finding), then one `## #N` section per finding. Your final message: the summary block only. Do not re-review the code and do not change the repository.

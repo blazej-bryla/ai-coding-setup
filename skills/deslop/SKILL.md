@@ -54,7 +54,7 @@ Routine, behaviour-preserving cleanup needs no approval: inlining a trivial sing
 
 ## 4. Check
 
-Never weaken a test to make a simplification pass; change tests only when an approved behaviour change, or an equivalent cleaner structure, requires it. Run the project's check and test commands from the profile env for every side the diff touches (`~/.agents/bin/wtconf -v WT_FE_DIR WT_BE_DIR WT_FE_TEST_CMD WT_BE_TEST_CMD`; lint and typecheck as the worker contract or the conventions files list them), from the repo root, non-watch. Red → fix the simplification, not the test.
+Never weaken a test to make a simplification pass; change tests only when an approved behaviour change, or an equivalent cleaner structure, requires it. Run the project's check and test commands from the profile env for every side the diff touches (`~/.agents/bin/wtconf -v WT_FE_DIR WT_BE_DIR WT_FE_TEST_CMD WT_BE_TEST_CMD`; lint and typecheck as the worker contract or the conventions files list them), from the repo root, non-watch — each through `~/.agents/bin/quiet "<command>"` (one `ok:` line when green, the last 40 lines when red; `~/.agents/skills/_shared/CONTEXT.md`). Red → fix the simplification, not the test.
 
 ## 5. Finish
 

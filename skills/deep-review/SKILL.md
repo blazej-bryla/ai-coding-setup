@@ -95,6 +95,19 @@ When all reviewers are done, read the per-dimension files and build `review/find
 - Merge duplicates: same root cause reported by ≥2 reviewers becomes ONE finding — keep the strongest evidence, note the corroboration (corroborated findings rank higher).
 - Verify before keeping: drop anything the actual code disproves, and downgrade severity inflation (a nitpick dressed as an issue).
 - Rank: blocking issues → issues → suggestions/questions → nitpicks/thoughts → praise. Number findings stably (`#1`, `#2`, …).
+- Each finding is a `## #N <short title>` section (the reviewer's fields below it), so a caller can open one finding alone.
+- **Summary block first** — `findings.md` opens with this block, before any finding; callers read only it and open a finding's section when they act on it:
+
+  ```
+  <!-- summary -->
+  findings: <total> — blocking <n> · issue <n> · suggestion <n> · question <n> · nitpick <n> · thought <n> · praise <n>
+  actionable:
+  - #1 issue (blocking) src/x.ts:42 — <one-line summary> [security+qa]
+  - #2 suggestion src/y.tsx:10 — <one-line summary>
+  <!-- /summary -->
+  ```
+
+  `actionable` = every finding except praise, in rank order, one line each (`[dims]` when corroborated); none → `actionable: none`. Disproved findings are not counted.
 
 ## 4. Triage
 
@@ -146,4 +159,4 @@ Report **to the user in the terminal** — this is where the process detail belo
 
 ## Reuse — the embedded reviewer pass
 
-`/work` and `/bugfix` run ONLY steps 2–3 of this skill — **including the classifier and the selection rules**: a ui-only ticket gets codebase + qa (or `light.md`), not the four-way fan-out; callers may add dimensions the flags missed, never drop selected ones. Findings are written under `~/.agents/scratch/<slug>/review/`, then deduped and verified. Real issues get FIXED as part of the work rather than triaged or published; debatable ones go to the user; anything the code disproves is dropped. No GitHub, no interactive loop. The caller supplies two things in the context block: the diff command (its uncommitted changes) and the requirements sources for the QA/light reviewer — plus `Dev server:` and `Browser:` when a server of this worktree serves the diff under review (step 2).
+`/work` and `/bugfix` run ONLY steps 2–3 of this skill — **including the classifier and the selection rules**: a ui-only ticket gets codebase + qa (or `light.md`), not the four-way fan-out; callers may add dimensions the flags missed, never drop selected ones. Findings are written under `~/.agents/scratch/<slug>/review/`, then deduped and verified into `findings.md` with its summary block (step 3); the caller reads that block, not the whole file, and opens a finding's `## #N` section only for the items it acts on. Real issues get FIXED as part of the work rather than triaged or published; debatable ones go to the user; anything the code disproves is dropped. No GitHub, no interactive loop. The caller supplies two things in the context block: the diff command (its uncommitted changes) and the requirements sources for the QA/light reviewer — plus `Dev server:` and `Browser:` when a server of this worktree serves the diff under review (step 2).

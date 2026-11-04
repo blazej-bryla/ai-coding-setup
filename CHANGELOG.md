@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.4.1] - 2026-11-04
+
+### Changed
+- `/work`, `/bugfix`, and `/deep-review` use less context: the orchestrator no longer reads whole repository files.
+- Worker agent reports are capped in length, so long runs use less context.
+- Browser checks return compact output instead of full page dumps.
+- `quiet` and `abcheck` report only pass or fail instead of full command output.
+
 ## [4.3.3] - 2026-11-03
 
 ### Added
