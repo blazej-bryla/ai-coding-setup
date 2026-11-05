@@ -13,6 +13,8 @@ A review pass sized to the diff — one generalist reviewer for small diffs, fou
 
 **Feedback mid-run.** Say first whether you agree or disagree, then what you changed.
 
+**Cold reader** — every question or gate message to the user follows the Cold reader rule in `~/.agents/skills/_shared/CONTEXT.md` (one or two lines of state — task, ticket, what happened since their last message — then the question; the reply is as big as the question).
+
 ## 1. Scope the diff
 
 Profile first (`~/.agents/skills/_shared/IDENTITY.md`, Profile): `~/.agents/bin/wfprofile review conventions` — a `stop=` ends the run. `review` = `project` or `none` governs the embedded pass of `/work` and `/bugfix`; invoked directly, this skill runs as written and says in one line that the profile maps review elsewhere. `conventions` feeds the `Conventions:` field below.
@@ -81,6 +83,7 @@ Output file: ~/.agents/scratch/<slug>/review/<dimension>.md  (create it; append 
 Requirements sources: <paths to tickets/spec/context, Linear issue ID/URL, PR description — or "none found">
 Conventions: <the `conventions` slot's paths — the worker contract and/or the project's files — or "none">
 Dev server: <url | none>                       (optional)
+Previous findings: <path to the prior findings.md>   (optional — a repair's re-review)
 Browser: <browser CLI command prefix, or the name of a connected browser MCP tool>   (optional)
 ```
 
@@ -94,16 +97,17 @@ When all reviewers are done, read the per-dimension files and build `review/find
 
 - Merge duplicates: same root cause reported by ≥2 reviewers becomes ONE finding — keep the strongest evidence, note the corroboration (corroborated findings rank higher).
 - Verify before keeping: drop anything the actual code disproves, and downgrade severity inflation (a nitpick dressed as an issue).
+- Certainty: every finding keeps its `proven` / `plausible` / `unverified` label (the refute phase may have downgraded it). `blocking: yes` only for a `proven` break of an acceptance criterion or a `proven` security / data-loss defect — a blocking finding that isn't `proven` becomes non-blocking.
 - Rank: blocking issues → issues → suggestions/questions → nitpicks/thoughts → praise. Number findings stably (`#1`, `#2`, …).
 - Each finding is a `## #N <short title>` section (the reviewer's fields below it), so a caller can open one finding alone.
 - **Summary block first** — `findings.md` opens with this block, before any finding; callers read only it and open a finding's section when they act on it:
 
   ```
   <!-- summary -->
-  findings: <total> — blocking <n> · issue <n> · suggestion <n> · question <n> · nitpick <n> · thought <n> · praise <n>
+  findings: <total> — blocking <n> · issue <n> · suggestion <n> · question <n> · nitpick <n> · thought <n> · praise <n> — proven <n> · plausible <n> · unverified <n>
   actionable:
-  - #1 issue (blocking) src/x.ts:42 — <one-line summary> [security+qa]
-  - #2 suggestion src/y.tsx:10 — <one-line summary>
+  - #1 issue (blocking, proven) src/x.ts:42 — <one-line summary> [security+qa]
+  - #2 suggestion (plausible) src/y.tsx:10 — <one-line summary>
   <!-- /summary -->
   ```
 
@@ -111,17 +115,17 @@ When all reviewers are done, read the per-dimension files and build `review/find
 
 ## 4. Triage
 
-**≤ 5 findings** → walk them one at a time (below). **More** → batch first: show the whole ranked list as a table (`#`, label, blocking, `file:line`, one-line summary), then ask the user to assign the numbers in bulk — **queue**, **skip**, or **discuss**; only the "discuss" ones get the one-at-a-time walk.
+**≤ 5 findings** → walk them one at a time (below). **More** → batch first: show the whole ranked list as a table (`#`, label, blocking, certainty, `file:line`, one-line summary), then ask the user to assign the numbers in bulk — **queue**, **skip**, or **discuss**; only the "discuss" ones get the one-at-a-time walk.
 
 The one-at-a-time walk goes through `findings.md` in rank order. For each finding, show:
 
-> **Finding N of X — `label (blocking|non-blocking)`** `file:line`
+> **Finding N of X — `label (blocking|non-blocking)` · `proven|plausible|unverified`** `file:line`
 > summary + suggested fix (if any)
 
 Then ask (AskUserQuestion):
 
 - **Explain deeper** → walk the code path, the evidence, and the consequence in full; then re-ask this same finding.
-- **Add to GitHub review** → queue it as a review comment anchored at the exact file/line, body in Conventional Comments format: `**label (blocking|non-blocking):** <summary>` + short rationale + suggested fix. Use GitHub suggestion blocks (```suggestion) when the fix is a small in-place replacement.
+- **Add to GitHub review** → queue it as a review comment anchored at the exact file/line, body in Conventional Comments format: `**label (blocking|non-blocking):** <summary>` + short rationale + suggested fix. A `plausible` or `unverified` finding is posted as `**question:**` or `**suggestion (non-blocking):**`, worded as a question or a possibility — never as a fact. Use GitHub suggestion blocks (```suggestion) when the fix is a small in-place replacement.
 - **Skip** → drop it from the queue (it stays in findings.md for the record).
 
 Before drafting a disagreeing reply (or skipping a finding as wrong), state the reviewer's strongest case in one sentence; if it holds, fix instead of replying.
@@ -159,4 +163,4 @@ Report **to the user in the terminal** — this is where the process detail belo
 
 ## Reuse — the embedded reviewer pass
 
-`/work` and `/bugfix` run ONLY steps 2–3 of this skill — **including the classifier and the selection rules**: a ui-only ticket gets codebase + qa (or `light.md`), not the four-way fan-out; callers may add dimensions the flags missed, never drop selected ones. Findings are written under `~/.agents/scratch/<slug>/review/`, then deduped and verified into `findings.md` with its summary block (step 3); the caller reads that block, not the whole file, and opens a finding's `## #N` section only for the items it acts on. Real issues get FIXED as part of the work rather than triaged or published; debatable ones go to the user; anything the code disproves is dropped. No GitHub, no interactive loop. The caller supplies two things in the context block: the diff command (its uncommitted changes) and the requirements sources for the QA/light reviewer — plus `Dev server:` and `Browser:` when a server of this worktree serves the diff under review (step 2).
+`/work` and `/bugfix` run ONLY steps 2–3 of this skill — **including the classifier and the selection rules**: a ui-only ticket gets codebase + qa (or `light.md`), not the four-way fan-out; callers may add dimensions the flags missed, never drop selected ones. Findings are written under `~/.agents/scratch/<slug>/review/`, then deduped and verified into `findings.md` with its summary block (step 3); the caller reads that block, not the whole file, and opens a finding's `## #N` section only for the items it acts on. Real issues get FIXED as part of the work rather than triaged or published — under the caller's repair cap (one repair, one re-review with `Previous findings:`; `_shared/CONTEXT.md`); `plausible` / `unverified` ones are non-blocking — fixed only when cheap and clearly right, otherwise noted; debatable ones go to the user; anything the code disproves is dropped. No GitHub, no interactive loop. The caller supplies two things in the context block: the diff command (its uncommitted changes) and the requirements sources for the QA/light reviewer — plus `Dev server:` and `Browser:` when a server of this worktree serves the diff under review (step 2).

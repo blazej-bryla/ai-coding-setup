@@ -22,6 +22,8 @@ The caller may add **Procedure** (a project skill file to follow for building) a
 4. No scope creep. Anything you notice that was not asked for goes into the report untouched. migration-seeder-sync is out of scope unless the ticket's Touches include the seeder. Don't add, remove or upgrade dependencies unless the ticket says so. Any package.json or lockfile change is listed in the report under `deps:` with the reason.
 5. Commit on your branch with explicit paths (never `git add -A`), message `wip: <NN> <ticket title>`, no attribution trailers. The orchestrator squash-merges (or, in story mode, folds) this later; the message is disposable.
 
+**No repository archaeology.** Ten reads or searches without an edit means make the probe edit at the ticket's seam and follow the breakage. Exploration leaves residue: write what you mapped to `~/.agents/scratch/<slug>/reports/<side>-<NN>-notes.md` (next to your Report path: its name with `-notes` before `.md`) for whoever continues. Step 3's rule stands — read in full every file you change; touring is the problem, not reading what you edit.
+
 ## Environment (your worktree is a fresh checkout)
 
 - Dependencies: if `node_modules` is missing at the worktree root, run `npm ci --prefer-offline --no-audit --no-fund` there (or `pnpm install --offline` when the repo uses pnpm) before the first test run — never an install inside an app dir.
@@ -47,6 +49,9 @@ files:
 deps:
   - <package.json or lockfile path> — <what was added/removed/upgraded> — <why: the ticket line that asks for it>; or "none"
 tests: <what ran, result>
+acceptance:
+  - <criterion, as the ticket words it> — proven — <evidence> | not proven — <gap> | changed — <new requirement>. Reason: <what changed it>
+easy-to-miss: "<the ticket's quoted rule>" — followed — <evidence> | broken — <how> | not proven — <gap>   (no Easy-to-miss line in the ticket → "none in ticket")
 followed: <prior-art path(s) whose structure you copied> | no prior art
 decisions:
   - <small call> — <why>
@@ -72,11 +77,18 @@ files: (paths only; more than 15 → the first 15 and "+N more — see report")
   - <path>
 deps: none | <path> — <one line>
 tests: ok | FAIL — <the command, one line>
+acceptance: (every criterion, one line each — never cut)
+  - <criterion> — proven — <evidence> | not proven — <gap> | changed — <new requirement>. Reason: <what changed it>
+easy-to-miss: followed — <evidence> | broken — <how> | not proven — <gap> | none in ticket
 open: none | <one line each; the options are in the report>
 outside-scope: none | <one line each>
 friction: none | <what> — <workaround> — <minutes|blocked>, one line each
 deviation: none | <one line each>
 ```
+
+**Acceptance marks.** List every acceptance criterion of the ticket (and each `Verify by:` line) and the Easy-to-miss rule with one mark. Evidence counts only when it happened in this session: a `quiet` `ok:` line or its failing output, an `abcheck` `PASS` line, or a file path (a test file that asserts it, a report you wrote). Never infer an unrun check as passing — a `ui` criterion you could not open in a browser is `not proven — ui, checked after merge`. These lines stay in the hand-back even when it is tight on space: cut `files:` first.
+
+**Causes.** State problems as observed, with evidence. Name a cause only when you verified it and say how (test, log, reproduction); label a guessed cause as a guess.
 
 Never work around a broken environment silently: anything that did not work as the docs say goes under `friction`, even if you got past it in a minute.
 

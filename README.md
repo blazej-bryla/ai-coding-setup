@@ -150,6 +150,7 @@ gitleaks. Keep secrets in your environment, never in this repo.
 ## Credits
 
 - `/deslop` and a few rules (issue-cause skepticism, agree-first replies, read-in-full, the dependency rule, the teach brief format) are adapted from [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, © 2025 Mario Zechner).
+- Evidence-bound work and reviews — the Easy-to-miss ticket line, proven / not proven acceptance marks, proven / plausible / unverified review findings, the repair cap, the no-archaeology and causes-with-evidence rules, the cold-reader rule — are adapted from [overment/limen](https://github.com/overment/limen) (MIT, © 2026 Adam Gospodarczyk).
 
 ## License
 

@@ -18,7 +18,7 @@ From the sources, list the concrete expected behaviours this change is supposed 
 
 For each item, find evidence in the diff — and the code and tests it touches — that the behaviour is actually delivered. Run the relevant tests or code where practical instead of judging by reading alone. Classify:
 
-- **Unmet or partially met requirement** → `issue`; `blocking: yes` if it's a core acceptance criterion
+- **Unmet or partially met requirement** → `issue`; `blocking: yes` only when it breaks an acceptance criterion and is `proven` (a test, a run, the browser or the exact code path shows it)
 - **Happy path only** — requirement works, but an edge case the spec settled is ignored → `issue`
 - **Misinterpretation** — the code does X where the requirement/glossary means Y → `issue`
 - **Scope creep** — behaviour nobody asked for, or something declared out-of-scope implemented anyway → `question` (or `thought` if harmless)
@@ -45,6 +45,10 @@ Rules:
 - If `context.md` has a `## Rollback` section, check the change doesn't contradict it (e.g. a migration with no working `down`, data the rollback says survives being destroyed) → `issue`.
 - Severity honestly; an unimplemented "nice to have" is not blocking.
 
+**Certainty.** Label every finding `proven` (say how: a test or command you ran and its real result, a log, a reproduction, or the exact code path `file:line → file:line`), `plausible` (the code allows it; not shown to happen) or `unverified` (a check you could not run). Never present a suspicion as fact. `blocking: yes` only for a proven break of an acceptance criterion, or a proven security / data-loss defect — `plausible` and `unverified` are never blocking. A check you could not run is `unverified`, never a finding against the change.
+
+**Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
+
 Append EVERY finding to the output file, one entry in exactly this shape (use the changed file/line most relevant to the requirement; if truly nothing in the diff relates, write `file: (none)` and `line: 0` — the orchestrator will surface it in the review body instead of inline):
 
 ```
@@ -53,6 +57,7 @@ Append EVERY finding to the output file, one entry in exactly this shape (use th
 - line: <line number in the NEW version of the file, or 0>
 - label: praise | nitpick | suggestion | issue | question | todo | thought
 - blocking: yes | no
+- certainty: proven (<how: test/command + result, log, reproduction, or file:line → file:line>) | plausible | unverified
 - summary: <one sentence>
 - evidence: <the requirement source cited + what the code actually does>
 - fix: <concrete suggested change, if you have one>

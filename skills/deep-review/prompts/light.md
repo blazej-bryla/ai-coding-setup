@@ -12,9 +12,13 @@ Priorities, in order:
 
 Rules:
 
-- Small diff ≠ lower standards: a real bug in 5 lines is still `blocking: yes`.
+- Small diff ≠ lower standards: a proven break of an acceptance criterion, or a proven security / data-loss defect, in 5 lines is still `blocking: yes`.
 - Do not pad. A clean small diff can legitimately produce zero findings plus at most one `praise`.
 - Skip style nitpicks unless they would genuinely confuse the next reader.
+
+**Certainty.** Label every finding `proven` (say how: a test or command you ran and its real result, a log, a reproduction, or the exact code path `file:line → file:line`), `plausible` (the code allows it; not shown to happen) or `unverified` (a check you could not run). Never present a suspicion as fact. `blocking: yes` only for a proven break of an acceptance criterion, or a proven security / data-loss defect — `plausible` and `unverified` are never blocking. A check you could not run is `unverified`, never a finding against the change.
+
+**Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
 Append EVERY finding to the output file, one entry in exactly this shape:
 
@@ -24,6 +28,7 @@ Append EVERY finding to the output file, one entry in exactly this shape:
 - line: <line number in the NEW version of the file>
 - label: praise | nitpick | suggestion | issue | question | todo | thought
 - blocking: yes | no
+- certainty: proven (<how: test/command + result, log, reproduction, or file:line → file:line>) | plausible | unverified
 - summary: <one sentence>
 - evidence: <what the code does vs what it should do — cite the exact lines>
 - fix: <concrete suggested change, if you have one>

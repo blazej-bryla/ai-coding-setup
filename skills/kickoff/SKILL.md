@@ -13,6 +13,8 @@ Turn a pasted Linear issue into a fully grilled `context.md` (plus tickets) unde
 
 **Feedback mid-run.** Say first whether you agree or disagree, then what you changed.
 
+**Cold reader** — every question or gate message to the user follows the Cold reader rule in `~/.agents/skills/_shared/CONTEXT.md` (one or two lines of state — task, ticket, what happened since their last message — then the question; the reply is as big as the question).
+
 Throughout: pull context lazily — the issue itself first, the wider story only when it exists — and delegate heavy research (story-wide Linear reads, codebase exploration) to subagents on `sonnet` so the main conversation stays small and cheap tokens do the fetching. Keep the interview and every decision in the main conversation — subagents cannot talk to the user.
 
 ## 1. Fetch the issue and derive the workdir
@@ -95,7 +97,7 @@ touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
 they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run."
+its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
 
 **Regular task** (a story included) — ask the user (AskUserQuestion): tickets as local files only (`mode: local` — one PR for the task), or ALSO created as Linear sub-issues under the pasted task (`mode: story` — one PR per ticket, FE and BE alike, stacked only on real chains)? Recommend Linear when the issue has the story label, local otherwise; the user decides.
 
@@ -111,7 +113,7 @@ touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
 they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run."
+its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
 
 Story mode only, add to it: "Each ticket has at most ONE blocker, of either side — linearise per `~/.agents/skills/work/STORY.md` §2 and show the linearised edges in the quiz; a chain may mix FE and BE tickets."
 

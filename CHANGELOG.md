@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.5.1] - 2026-11-05
+
+### Added
+- Herdr tasks record their state and are closed when the work finishes.
+### Changed
+- Implementation and review agents must tie each claim to evidence in the code, so unsupported findings are dropped.
+- Implementation and review agents cap repair attempts, so a failing fix stops instead of looping.
+- Implementation and review agents no longer dig through git history for context.
+
 ## [4.4.1] - 2026-11-04
 
 ### Changed

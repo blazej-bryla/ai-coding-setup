@@ -17,8 +17,12 @@ Check, within the changed code:
 Rules:
 
 - Every finding must cite the convention's prior art: the existing file/component the code should have used or matched. No prior art found → it is not a consistency finding; drop it.
-- `blocking: yes` is rare here — reserve it for changes that fork a core pattern in a way that will spread (e.g. a second competing data-access layer). Most findings are `suggestion` or `nitpick`.
+- `blocking: yes` almost never applies here — only per the Certainty rule below. A change that forks a core pattern in a way that will spread (e.g. a second competing data-access layer) is an `issue`, non-blocking. Most findings are `suggestion` or `nitpick`.
 - Code that fits the codebase unusually well deserves at most 1–2 `praise` entries.
+
+**Certainty.** Label every finding `proven` (say how: a test or command you ran and its real result, a log, a reproduction, or the exact code path `file:line → file:line`), `plausible` (the code allows it; not shown to happen) or `unverified` (a check you could not run). Never present a suspicion as fact. `blocking: yes` only for a proven break of an acceptance criterion, or a proven security / data-loss defect — `plausible` and `unverified` are never blocking. A check you could not run is `unverified`, never a finding against the change.
+
+**Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
 Append EVERY finding to the output file, one entry in exactly this shape:
 
@@ -28,6 +32,7 @@ Append EVERY finding to the output file, one entry in exactly this shape:
 - line: <line number in the NEW version of the file>
 - label: praise | nitpick | suggestion | issue | question | todo | thought
 - blocking: yes | no
+- certainty: proven (<how: test/command + result, log, reproduction, or file:line → file:line>) | plausible | unverified
 - summary: <one sentence>
 - evidence: <what the project does elsewhere — cite paths — vs what this code does>
 - fix: <concrete suggested change, if you have one>

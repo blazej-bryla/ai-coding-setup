@@ -15,6 +15,8 @@ Simplify what this branch added or changed, keeping its intended behaviour. Aim 
 
 **Feedback mid-run.** Say first whether you agree or disagree, then what you changed.
 
+**Cold reader** — every question or gate message to the user follows the Cold reader rule in `~/.agents/skills/_shared/CONTEXT.md` (one or two lines of state — task, ticket, what happened since their last message — then the question; the reply is as big as the question).
+
 ## 1. Scope
 
 Base branch as in `~/.agents/skills/_shared/IDENTITY.md` (`$WT_BASE`, else the branch `origin/HEAD` points to, else `~/.agents/bin/wtconf -v WT_BASE_BRANCH`) — never assume a branch name. Profile: `~/.agents/bin/wfprofile conventions` once — a `stop=` ends the run; the files it lists (or the worker contract `~/.agents/projects/<name>.md`) are the conventions the result must still follow.

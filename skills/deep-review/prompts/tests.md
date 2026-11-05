@@ -20,8 +20,12 @@ First read existing tests near the touched code to establish the local style, th
 Rules:
 
 - Verify before flagging: a behaviour may be covered by an existing higher-level test — search for it before claiming a gap.
-- `blocking: yes` only for changed core logic shipping with no meaningful coverage at all, or tests that give false confidence (cannot fail). Style mismatches are `nitpick`/`suggestion`.
+- Changed core logic with no meaningful coverage, or tests that give false confidence (cannot fail), are `issue` — `blocking: yes` only when you proved (by running it) that an acceptance criterion is broken. Style mismatches are `nitpick`/`suggestion`.
 - Well-chosen tests deserve at most 1–2 `praise` entries.
+
+**Certainty.** Label every finding `proven` (say how: a test or command you ran and its real result, a log, a reproduction, or the exact code path `file:line → file:line`), `plausible` (the code allows it; not shown to happen) or `unverified` (a check you could not run). Never present a suspicion as fact. `blocking: yes` only for a proven break of an acceptance criterion, or a proven security / data-loss defect — `plausible` and `unverified` are never blocking. A check you could not run is `unverified`, never a finding against the change.
+
+**Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
 Append EVERY finding to the output file, one entry in exactly this shape:
 
@@ -31,6 +35,7 @@ Append EVERY finding to the output file, one entry in exactly this shape:
 - line: <line number in the NEW version of the file>
 - label: praise | nitpick | suggestion | issue | question | todo | thought
 - blocking: yes | no
+- certainty: proven (<how: test/command + result, log, reproduction, or file:line → file:line>) | plausible | unverified
 - summary: <one sentence>
 - evidence: <the uncovered scenario / the prior-art test file it diverges from>
 - fix: <concrete suggested change, if you have one>

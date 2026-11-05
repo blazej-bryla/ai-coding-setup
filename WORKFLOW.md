@@ -157,3 +157,14 @@ What fills the `/work` session is now capped; the gates, teach, review selection
 - Repo questions go to `wf-explore`; the orchestrator reads with offset/limit or `grep -l`, never `cat`/`sed -n` on source.
 - Scratch: `bin/tickets` lists one line per ticket for the frontier; a ticket file is read when it is landed; `context.md`/`spec.md` once. `findings.md` opens with a summary block (counts + one line per actionable finding) that callers read instead of the whole file.
 - Diffs: `--stat` by default; the full diff only for files a finding or the teach brief points to.
+
+## v4.5 — evidence-bound work and reviews (ideas from overment/limen)
+
+- Tickets carry one `**Easy to miss:** "<a rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>` line (`/to-tickets` template, `/kickoff`'s caller requirement; `/bugfix` puts one in `fix-plan.md`).
+- Worker reports mark every acceptance criterion `proven — <evidence>` | `not proven — <gap>` | `changed — <new requirement>. Reason: <what changed it>`, and the Easy-to-miss rule `followed` | `broken` | `not proven`. Evidence counts only when it happened in that session — a `quiet` `ok:` line or its failing output, an `abcheck` `PASS` line, a file path; an unrun check is never inferred as passing. These lines stay in the ≤ 40-line hand-back. The orchestrator (`/work`, `/bugfix`) reads only the items not proven/followed and, for each, checks it itself, sends it back, or asks you with the reason; everything proven moves on to review.
+- Review findings carry certainty: `proven` (how: test, log, reproduction, exact code path), `plausible` or `unverified`. `blocking: yes` only for a proven break of an acceptance criterion or a proven security / data-loss defect. The refute phase downgrades unproven claims; the `findings.md` summary and triage show the label; on GitHub a plausible finding is posted as `question` or `suggestion (non-blocking)`.
+- Repair cap (`/work`, `/bugfix`, `/address-review`): one repair and one re-review per ticket (the re-review gets `Previous findings:`); a second blocking result ends the loop with what remains, what it cost, and a question to you.
+- No repository archaeology: ten reads or searches without an edit means the worker makes the probe edit at the ticket's seam; what it mapped goes to `scratch/<slug>/reports/<side>-<NN>-notes.md`. Reading in full every file it changes still holds.
+- Causes only with evidence: problems as observed; a cause only when verified, and how; a guess labelled a guess.
+- Cold reader (`skills/_shared/CONTEXT.md`): a question or gate message opens with one or two lines of state — task, ticket, what happened since your last message — then the question.
+
