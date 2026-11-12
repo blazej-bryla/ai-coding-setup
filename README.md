@@ -1,6 +1,69 @@
-# ai-coding-setup — a Claude Code workflow for FE + BE monorepo teams
+<div align="center">
 
-Skills, subagents and hooks that take a tracker issue from plan to merged PR:
+# ai-coding-setup
+
+**A Claude Code workflow that takes a Linear issue to a merged PR — and keeps you in the loop.**
+
+Skills, subagents and hooks for FE + BE monorepo teams: plan with grilling, build in parallel worktrees,
+review with evidence, ship PRs with screenshots.
+
+[Quick start](#install) · [How it works](#how-it-works) · [Commands](#commands) · [Configure](#configure) · [Profiles](#profiles)
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/pipeline-dark.png">
+  <img alt="From Linear issue to merged PR: /kickoff plans tickets, /work builds them, /pr opens the pull request, /address-review answers threads; bugs go through /bugfix" src="docs/diagrams/pipeline-light.png">
+</picture>
+
+## Why
+
+- **One issue → one worktree → one session.** `wt <branch> /work` spins up an isolated worktree with its own
+  ports and database; several tasks run side by side.
+- **Agents do the typing, you keep the judgement.** Every push is asked for, every ticket ends with a short
+  *teach* round, so you know the code that lands under your name.
+- **Evidence, not vibes.** Acceptance criteria come back `proven` / `not proven`, review findings
+  `proven` / `plausible` / `unverified` — and only a proven defect blocks.
+- **Your repo's own skills win where they exist.** A per-repo profile maps each step to the workflow's
+  text, the project's skill, or nothing.
+
+## How it works
+
+### The ticket loop — `/work`
+
+`/kickoff` cuts an issue into FE and BE tickets with explicit blockers. `/work` walks that graph: every
+ticket whose blockers have landed is built in parallel by `wf-implementer` agents, each in its own
+worktree, then landed one at a time.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/work-loop-dark.png">
+  <img width="720" alt="The /work loop: pick frontier, implement, inspect, review, verify in a browser, teach, squash and commit; every step writes to the task's scratch folder" src="docs/diagrams/work-loop-light.png">
+</picture>
+</p>
+
+### Review that tries to prove itself wrong — `/deep-review`
+
+A cheap classifier reads the diff and picks reviewers by risk: one light pass for small diffs, up to four
+specialists in parallel otherwise. A refute phase then attacks every finding against the actual code, so
+what reaches you is short and defensible.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deep-review-dark.png">
+  <img alt="/deep-review: risk classifier, light reviewer or parallel security, codebase, tests and QA reviewers, refute, merge into findings.md, triage into one GitHub review" src="docs/diagrams/deep-review-light.png">
+</picture>
+
+### Three layers — generic core, per-repo knowledge
+
+The core knows nothing about your project. What does — which steps your repo's own skills take over, and
+the conventions your linter can't see — lives in two small per-repo files.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/layers-dark.png">
+  <img alt="Layer stack: Claude Code and tools, the workflow core, a per-repo profile, a per-repo worker contract" src="docs/diagrams/layers-light.png">
+</picture>
+
+## Commands
 
 ```
 /kickoff <issue>     plan: context.md → grilling → tickets (FE + BE in one run)
