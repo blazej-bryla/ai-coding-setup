@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.6.0] - 2026-11-12
+
+### Added
+- The README is now a landing page with diagrams of the pipeline, the `/work` loop, deep-review, and the layers.
+
 ## [4.5.1] - 2026-11-05
 
 ### Added
