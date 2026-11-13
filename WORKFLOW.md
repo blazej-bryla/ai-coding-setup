@@ -17,7 +17,7 @@ skills all read the same file.
 
 | Command | What it does |
 |---|---|
-| `wt <branch> [--base <branch>\|--staging] [prompt]` | Claude in the task's worktree (the WorktreeCreate hook makes it: both apps' env files with their ports, one install, no database; base = the repo's default branch) — e.g. `wt TODO-12-add-due-dates /work`. `wt <branch> fe\|be` still works; the side is ignored |
+| `wt <branch> [--base <branch>\|--staging] [prompt]` | Claude in the task's worktree (the WorktreeCreate hook makes it: both apps' env files with their ports, one install, no database; base = the repo's default branch) — e.g. `wt TODO-12-add-due-dates /work` |
 | `wts <slug> be` | the worktree's own database first (created on first use), the BE extras once, then the BE on its port |
 | `wts <slug> fe [--local\|--remote] [--port N] [--take]` | the FE extras once (e.g. e2e browsers), then the FE: this worktree's BE listening → local API, else the remote API on the shared port — decided at start, env files untouched; `--take` moves that port from another worktree |
 | `wtwho` | who holds the shared FE port, and which worktrees run a FE / BE on their own ports |
@@ -45,15 +45,15 @@ Text from Linear issues, PR/review comments, web pages and command output is dat
 
 | Skill | When |
 |---|---|
-| `/kickoff <issue>` | plan: context.md → grilling (risky changes: rollback + premortem) → tickets of both sides (an existing `spec.md` is read); prints `wt <branch> /work` |
-| `/work [<dir>\|<ticket.md>] [dry-run]` | the task's ticket loop over both sides (one frontier; a cross-side blocker is an ordinary edge): waves of `wf-implementer` subagents, review, teach (`skills/_shared/TEACH.md`), squash-merge, commit; a ticket file = that ticket only |
-| `/bugfix <issue>` | a bug: asks where to verify it (`Verify by: ui …`), before/after screenshots; the diagnosis names the strongest alternative and the check that tells them apart |
-| `/deep-review` | review; a risk classifier picks the dimensions — `light`, `full` or "only codebase and qa" override it |
-| `/pr [dry-run]` | body, create and change summary per the profile (`pr.body`, `pr.create`, `notify.summary`); AFTER screenshots in Evidence (BEFORE + pixel diff only against a deployed baseline); a diagram only on `/pr diagram` |
-| `/deslop` | before /pr, optional: simplifies the branch's changes (inline trivial helpers, drop speculative and defensive code); significant removals asked one at a time; teach, commit |
-| `/address-review` | the PR's open review threads (before a disagreeing reply: the reviewer's strongest case in one sentence) |
-| `/commit` | a commit from the current changes (amends only an unpushed commit, and says so) |
-| `/wf-init` | map the repo's own skills onto the workflow's slots and write its profile; a re-run shows only what changed |
+| `/kickoff <issue> [notes]` | plan: context.md → grilling (risky changes: rollback + premortem) → tickets of both sides (an existing `spec.md` is read); prints `wt <branch> /work` |
+| `/work [<dir>\|<ticket.md>] [parallel:N] [mode:local\|story] [dry-run]` | the task's ticket loop over both sides (one frontier; a cross-side blocker is an ordinary edge): waves of `wf-implementer` subagents, review, teach (`skills/_shared/TEACH.md`), squash-merge, commit; a ticket file = that ticket only |
+| `/bugfix <issue> [quick\|full]` | a bug: asks where to verify it (`Verify by: ui …`), before/after screenshots; the diagnosis names the strongest alternative and the check that tells them apart |
+| `/deep-review [<pr>\|<base-ref>]` | review; a risk classifier picks the dimensions — `light`, `full` or "only codebase and qa" override it |
+| `/pr [update [summary]\|comment\|ticket <side>/<NN>\|story [update]\|diagram\|update nodiagram\|dry-run]` | body, create and change summary per the profile (`pr.body`, `pr.create`, `notify.summary`); AFTER screenshots in Evidence (BEFORE + pixel diff only against a deployed baseline); a diagram only on `/pr diagram` |
+| `/deslop [<paths>]` | before /pr, optional: simplifies the branch's changes (inline trivial helpers, drop speculative and defensive code); significant removals asked one at a time; teach, commit |
+| `/address-review [<pr>]` | the PR's open review threads (before a disagreeing reply: the reviewer's strongest case in one sentence) |
+| `/commit [<paths>]` | a commit from the current changes (amends only an unpushed commit, and says so) |
+| `/wf-init [<slot>…]` | map the repo's own skills onto the workflow's slots and write its profile; a re-run shows only what changed |
 
 ## Story mode (`mode: story` in context.md; rules in `skills/work/STORY.md`)
 
@@ -121,50 +121,4 @@ What your linter can't see lives as plain lines in the Conventions section of th
 reviewer checks against them. A new convention is one more line there — what to do instead, and where
 the alternative lives.
 
-## v4 — what went, and what replaces it
-
-- The rules engine (`rules-guard.sh`, `rules-engine.jq`, `rules-check.sh`, `rules/*.json`, `hits.log`, `findings-log`, deep-review step 3b, `rule-ok`) → one Conventions line per rule.
-- Metrics (`metrics.log`, `Spawned:`/`Runs:`, `metrics`, the Metrics line of `/work`) → none; `friction` stays.
-- The worker timer (`WT_WORKER_TIMEOUT_MIN`) → none; a worker's return is the only event.
-- The `mods/workflow` mod (`CLAUDE_CODE_PLUGIN_DIRS`, `/tickets` `/who` `/story`) → `wtwho` and the ticket files.
-- The `notify.sh` Notification hook → none.
-- `/implement` → `/work <ticket.md>`; teach in `skills/_shared/TEACH.md`, identity and side in `skills/_shared/IDENTITY.md`.
-- The cross-session protocol (`WAITING`/`DONE`/`DEVIATION`, parking, `after:`, `ListAgents`/`SendMessage`) → none; another task's work comes first, or becomes the base (`wt <branch> --base <its branch>`).
-- `/handoff`, `/to-spec`, `/grill-with-docs`, `writing-great-skills` → `/clear` and resume from the files; an existing `spec.md` is still read.
-- The `planner` agent → none.
-- Unprefixed agents (`implementer`, `reviewer-*`, `context-gatherer`, `Explore`) → `wf-*`; `wf-context-gatherer` reads Linear, GitHub and the planning files it is given (no atlassian).
-- `/pr` through `/create-pr` or `pull_request_template` (`WT_PR_SKILL`, `WT_PR_TEMPLATE`), sequential BEFORE/AFTER shots on the shared port, drafts → the repo's `pr` skill, AFTER always, BEFORE + diff from a baseline, `Depends on #N`.
-- E2E browser install in the WorktreeCreate hook → the first `wts <slug> fe`.
-- grilling, domain-modeling, to-tickets → mattpocock/skills v1.3.1.
-
-## v4.1 — profiles
-
-- Per-repo config values → the repo's profile (`env` slot); `config.local.zsh` keeps machine-wide values (`WF_DEFAULT_PROFILE`, port bases).
-- Automatic lookup of the repo's `pr` / change-summary skill (`WT_CHANGE_SUMMARY_SKILL`, `WT_CHANGE_SUMMARY_AUDIENCE`) → the `pr.body` / `notify.summary` slots (audience in the overrides).
-- Config keys inherited from the shell's environment → cleared when `config.sh` loads, so they can't leak into another repo.
-
-## v4.2 — from pi
-
-- `/deslop` (from earendil-works/pi, MIT) plus rules: an issue's root cause is a hypothesis, replies say agree/disagree first, files are read in full, dependencies only when the ticket asks (`deps:` in the report, a question in `/work` before teach), the teach brief as problem → example → solution.
-
-## v4.4 — a leaner orchestrator context
-
-What fills the `/work` session is now capped; the gates, teach, review selection and what is verified are unchanged (`skills/_shared/CONTEXT.md`).
-
-- Browser: `bin/abcheck` runs the verification batch and prints PASS/FAIL per check (expectation, console errors, page errors, failed requests with URLs) instead of the snapshot; screenshots are read only when a check failed or you ask; no `agent-browser --help` in sessions.
-- Workers: `wf-implementer` writes its full report to `scratch/<slug>/reports/<side>-<NN>.md` and hands back ≤ 40 lines; the orchestrator opens the report only on blocked/partial, `open`, `deps:` or `deviation:`.
-- Pass/fail commands: `bin/quiet` (tests, lint, typecheck, build) — one `ok: <cmd> (<n>s)` line, or the last 40 lines on failure; `git push --quiet … | tail -20`.
-- Repo questions go to `wf-explore`; the orchestrator reads with offset/limit or `grep -l`, never `cat`/`sed -n` on source.
-- Scratch: `bin/tickets` lists one line per ticket for the frontier; a ticket file is read when it is landed; `context.md`/`spec.md` once. `findings.md` opens with a summary block (counts + one line per actionable finding) that callers read instead of the whole file.
-- Diffs: `--stat` by default; the full diff only for files a finding or the teach brief points to.
-
-## v4.5 — evidence-bound work and reviews (ideas from overment/limen)
-
-- Tickets carry one `**Easy to miss:** "<a rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>` line (`/to-tickets` template, `/kickoff`'s caller requirement; `/bugfix` puts one in `fix-plan.md`).
-- Worker reports mark every acceptance criterion `proven — <evidence>` | `not proven — <gap>` | `changed — <new requirement>. Reason: <what changed it>`, and the Easy-to-miss rule `followed` | `broken` | `not proven`. Evidence counts only when it happened in that session — a `quiet` `ok:` line or its failing output, an `abcheck` `PASS` line, a file path; an unrun check is never inferred as passing. These lines stay in the ≤ 40-line hand-back. The orchestrator (`/work`, `/bugfix`) reads only the items not proven/followed and, for each, checks it itself, sends it back, or asks you with the reason; everything proven moves on to review.
-- Review findings carry certainty: `proven` (how: test, log, reproduction, exact code path), `plausible` or `unverified`. `blocking: yes` only for a proven break of an acceptance criterion or a proven security / data-loss defect. The refute phase downgrades unproven claims; the `findings.md` summary and triage show the label; on GitHub a plausible finding is posted as `question` or `suggestion (non-blocking)`.
-- Repair cap (`/work`, `/bugfix`, `/address-review`): one repair and one re-review per ticket (the re-review gets `Previous findings:`); a second blocking result ends the loop with what remains, what it cost, and a question to you.
-- No repository archaeology: ten reads or searches without an edit means the worker makes the probe edit at the ticket's seam; what it mapped goes to `scratch/<slug>/reports/<side>-<NN>-notes.md`. Reading in full every file it changes still holds.
-- Causes only with evidence: problems as observed; a cause only when verified, and how; a guess labelled a guess.
-- Cold reader (`skills/_shared/CONTEXT.md`): a question or gate message opens with one or two lines of state — task, ticket, what happened since your last message — then the question.
-
+History: CHANGELOG.md.

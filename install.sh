@@ -60,7 +60,7 @@ cat <<'NEXT'
 Next (once):
   1. Third-party skills/plugins the workflow calls — see README "Third-party pieces".
   2. Hooks: merge the README "settings.json" snippet into ~/.claude/settings.json.
-  3. Config: cp config.example.zsh config.local.zsh, fill it in; source shell/worktrees.zsh from ~/.zshrc;
-     bin/wtconf shows the effective values.
+  3. Config: cp config.example.zsh config.local.zsh, fill in machine-wide values; source shell/worktrees.zsh from ~/.zshrc; bin/wtconf shows the effective values.
   4. Worker contract: projects/<repo dir name>.md with a Conventions section per app (imported via CLAUDE.local.md).
+  5. Per repo: run /wf-init in the repo to write its profile (which steps its own skills take over, its env values).
 NEXT

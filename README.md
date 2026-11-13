@@ -4,7 +4,9 @@
 
 My Claude Code setup for taking a Linear issue to a merged pull request in a frontend + backend monorepo.
 
-[Quick start](#install) · [How it works](#how-it-works) · [Skills](#skills) · [Agents](#agents) · [Configure](#configure) · [Profiles](#profiles)
+v4.6.2 · macOS · a personal setup, published as a reference — expect to adapt it, not install it 1:1.
+
+[Quick start](#install) · [Is it for you?](#is-it-for-you) · [How it works](#how-it-works) · [Skills](#skills) · [Agents](#agents) · [Configure](#configure) · [Profiles](#profiles)
 
 </div>
 
@@ -30,6 +32,20 @@ The things I cared about most:
   `not proven`, and a review finding can only block the merge if it's proven.
 - If a repo already has its own skills (for PR descriptions, tests, planning), the workflow uses those
   instead of mine. `/wf-init` sets that up.
+- The context budget: the orchestrator session stays small. Pass/fail commands go through `quiet`, browser
+  checks through `abcheck`, worker hand-backs are capped at 40 lines, and the full reports stay on disk.
+- A friction log: when a step needs a workaround, it gets logged, and `friction 7` once a week decides
+  what I fix next.
+
+## Is it for you?
+
+It's built around a monorepo with a frontend and a backend app, Linear for issues, GitHub for pull requests
+and [agent-browser](https://github.com/vercel-labs/agent-browser) for checking the UI. Paths, ports, dev
+commands, the database and tracker labels are all configuration (see [Configure](#configure)), and which
+steps your repo's own skills take over is its [profile](#profiles). `WORKFLOW.md` is a one-page tour.
+
+Separate frontend and backend repos aren't supported any more. Release **v3.7.1** is the last one that
+handled that setup.
 
 ## How it works
 
@@ -72,35 +88,12 @@ can't check.
   <img alt="Layer stack: Claude Code and tools, the workflow core, a per-repo profile, a per-repo worker contract" src="docs/diagrams/layers-light.png">
 </picture>
 
-## Commands
-
-```
-/kickoff <issue>     plan: context.md → grilling → tickets (FE + BE in one run)
-/work [<ticket.md>]  the task's ticket loop (FE + BE, one frontier): parallel implementers in their own worktrees,
-                     then review → teach → squash-merge → commit, one ticket at a time; a ticket file = that ticket only
-/bugfix <issue>      quick path for obvious bugs, full root-cause path otherwise
-/deep-review         review sized by a risk classifier; parallel specialists + a refute phase
-/pr                  PR body in the repo's own `pr` skill sections, with screenshots
-/deslop              simplify the branch's changes before /pr (optional)
-/address-review      unresolved PR threads, one by one
-/commit              one clean commit, terse message
-/wf-init             map a repo's own skills onto the workflow's steps (a per-repo profile)
-```
-
-It's built around a monorepo with a frontend and a backend app, Linear for issues, GitHub for pull requests
-and [agent-browser](https://github.com/vercel-labs/agent-browser) for checking the UI. Paths, ports, dev
-commands, the database and tracker labels are all configuration (see [Configure](#configure)), and which
-steps your repo's own skills take over is its [profile](#profiles). `WORKFLOW.md` is a one-page tour.
-
-Separate frontend and backend repos aren't supported any more. Release **v3.7.1** is the last one that
-handled that setup.
-
 ## Skills
 
 Nine slash commands. In the diagrams, **YOU** marks the points where a skill stops and waits for you, and
 **AGENT** marks a step a subagent does in its own context.
 
-### `/kickoff <issue>`
+### `/kickoff <issue> [notes]`
 
 Plans the work before anyone writes code. It reads the Linear issue (and the parent story, if there is
 one), looks through the code for something similar that already exists, writes `context.md`, and then
@@ -113,7 +106,7 @@ rule that's easiest to miss, plus the command that starts the work: `wt <branch>
   <img alt="/kickoff: fetch the issue, explore the code, write context.md, grill you, cut FE and BE tickets" src="docs/diagrams/skill-kickoff-light.png">
 </picture>
 
-### `/work`
+### `/work [dir|ticket.md] [parallel:N] [mode:local|story] [dry-run]`
 
 Builds the tickets. Every ticket whose blockers are done goes to its own `wf-implementer` in its own
 worktree, all at the same time. They come back one by one: the evidence gets checked, the change is
@@ -122,7 +115,7 @@ you're about to commit, and then it's squash-merged. When a blocker lands, the t
 
 <p align="center"><img width="720" alt="/work: three tickets build in parallel worktrees, each lands through review, teach and commit, then the blocked ticket starts" src="docs/media/skill-work.webp"></p>
 
-### `/bugfix <issue>`
+### `/bugfix <issue> [quick|full]`
 
 Small, obvious bugs take a quick path, and everything else gets a proper investigation. Either way you see
 the diagnosis before any code changes, including the most likely other explanation and the check that
@@ -133,7 +126,7 @@ tells the two apart. UI bugs get screenshots from before and after the fix.
   <img alt="/bugfix: triage, diagnose with you, fix by wf-implementer, verify and review, teach and commit" src="docs/diagrams/skill-bugfix-light.png">
 </picture>
 
-### `/deep-review [pr]`
+### `/deep-review [pr|base-ref]`
 
 A small model reads the diff and decides who should review it: one reviewer for a small diff, up to four
 specialists in parallel for a bigger one. Then every finding is checked against the code by an agent whose
@@ -142,15 +135,16 @@ GitHub review. Only a proven finding blocks.
 
 <p align="center"><img width="720" alt="/deep-review: the classifier picks four reviewers, five findings go to refute, two are disproved, three are merged and triaged into one GitHub review" src="docs/media/skill-deep-review.webp"></p>
 
-### `/pr`
+### `/pr [update|comment|story|diagram|dry-run]`
 
 Writes the description in your repo's own PR format, using the branch, the tickets and the commits. It
 takes AFTER screenshots of the screens it changed (and BEFORE screenshots plus a visual diff if you've set
 up a baseline), asks before pushing, opens the PR and posts a short summary of the change.
+The full argument syntax (story-mode tickets, `update nodiagram`) is in `WORKFLOW.md`.
 
 <p align="center"><img width="720" alt="/pr: the body builds from the branch, the browser takes AFTER screenshots into Evidence, the push waits for your yes, PR #128 opens" src="docs/media/skill-pr.webp"></p>
 
-### `/deslop`
+### `/deslop [paths]`
 
 Optional, before `/pr`. It goes through the branch's own changes looking for code that only looks
 careful: one-line helpers, options nobody asked for, checks for things that can't happen. Anything worth
@@ -172,7 +166,7 @@ that reach outside the PR (secrets, CI, permissions) are flagged to you and neve
   <img alt="/address-review: collect threads, one at a time with you, teach and commit, push when asked, reply and resolve on GitHub" src="docs/diagrams/skill-address-review-light.png">
 </picture>
 
-### `/commit`
+### `/commit [paths]`
 
 Stages files by name (never `git add -A`), gets a short two-to-four-line message from a small model,
 checks it, and commits. It only amends commits that haven't been pushed, and it tells you when it does.
@@ -182,7 +176,7 @@ checks it, and commits. It only amends commits that haven't been pushed, and it 
   <img alt="/commit: stage explicit paths, haiku writes the message, sanity check, commit" src="docs/diagrams/skill-commit-light.png">
 </picture>
 
-### `/wf-init`
+### `/wf-init [slot…]`
 
 Looks at your repo's own skills, agents and conventions, suggests which of them should handle each step of
 the workflow, asks you, and writes the [profile](#profiles). Then it does a dry run of `/work` and `/pr`
@@ -209,12 +203,16 @@ reviews, where judgement matters, Sonnet for building and searching, and Haiku f
 | Path | What |
 |---|---|
 | `skills/` | the slash commands above (`SKILL.md` each; `deep-review/prompts/` are the reviewer prompts) |
-| `skills/_shared/` | text several skills read: `TEACH.md` (the teach round), `IDENTITY.md` (slug, side, base) |
+| `skills/_shared/` | text several skills read: `TEACH.md` (the teach round), `IDENTITY.md` (slug, side, base), `CONTEXT.md` (context budget rules) |
 | `agents/` | subagents, namespaced so a repo's own `.claude/agents/` never shadows them: `wf-implementer`, `wf-explore`, `wf-context-gatherer`, `wf-reviewer-*` |
 | `hooks/` | `worktree-create.sh` (per-task worktrees, ports, per-worktree DB via `lib/db.sh`), `bash-guard.sh` (agents never start/kill dev servers or run watch-mode tests), `rtk-guard.sh`, `pr-created.sh`; `lib/config.sh` = every setting with its default |
-| `shell/worktrees.zsh` | `wt`, `wts`, `wtwho`, `wtrm`, `wtclean`, `wtdb`, `ablogin`, `friction` |
+| `shell/worktrees.zsh` | `wt`, `wts`, `wtwho`, `cdwt`, `wtls`, `wtrm`, `wtclean`, `wtdb`, `ablogin`, `friction` |
 | `bin/` | `wtconf` (prints the effective config; `--ports` a worktree's ports), `wfprofile` (reads a repo's profile), `pr-diagram-check`, `settings-sync`, `quiet` (pass/fail commands: one `ok:` line or the last 40 lines), `abcheck` (one browser check, a compact PASS/FAIL summary), `tickets` (one line per ticket) |
 | `config.example.zsh` | template for your `config.local.zsh` |
+| `scripts/` | the leak guard's denylist scan: `denylist-scan` + `public-denylist.txt` |
+| `.githooks/` | the leak-guard pre-commit hook |
+| `docs/` | the README's diagrams and media |
+| `CHANGELOG.md` | version history |
 
 ## Requirements
 
@@ -242,7 +240,7 @@ Merge into `~/.claude/settings.json`:
 
 ```json
 {
-  "permissions": { "allow": ["Bash(~/.agents/bin/wtconf:*)", "Bash(~/.agents/bin/quiet:*)", "Bash(~/.agents/bin/abcheck:*)", "Bash(~/.agents/bin/tickets:*)"] },
+  "permissions": { "allow": ["Bash(~/.agents/bin/wtconf:*)", "Bash(~/.agents/bin/quiet:*)", "Bash(~/.agents/bin/abcheck:*)", "Bash(~/.agents/bin/tickets:*)", "Bash(~/.agents/bin/wfprofile:*)"] },
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [
@@ -271,13 +269,16 @@ echo 'source ~/.agents/shell/worktrees.zsh' >> ~/.zshrc
 ~/.agents/bin/wtconf                                         # check what the hooks and skills will see
 ```
 
-`config.local.zsh` holds your real values: repo paths, the deployed API and base-branch FE, the
-remote-API port, dev and setup commands, the patterns `bash-guard` uses to spot server starts and
-watch-mode tests, the per-worktree database (container, prefix and migrate command, or off), what your
-SSO login screen looks like, tracker labels and statuses. Every key and
-its default is documented in `config.example.zsh` and `hooks/lib/config.sh`. The hooks and the shell
-helpers read the file directly; skills read it through `wtconf`. Don't commit it to a
-public repo; the leak guard refuses a `config.local.zsh`.
+`config.local.zsh` holds the machine-wide values: the port bases, `WF_DEFAULT_PROFILE`, and, for a
+single-repo setup, everything else too (repo paths, the deployed API and base-branch FE, dev and setup
+commands, the patterns `bash-guard` uses to spot server starts and watch-mode tests, the per-worktree
+database, what your SSO login screen looks like, tracker labels and statuses). With several repos, the
+per-repo values can live in each repo's [profile](#profiles) instead (slot `env`, written by `/wf-init`),
+and inside that repo they win over the config. Every key and its default is documented in
+`config.example.zsh` and `hooks/lib/config.sh`. The hooks and the shell helpers read the file directly;
+skills read it through `wtconf`, which prints the effective values. Don't commit it to a public repo; the
+leak guard refuses a `config.local.zsh`. `AGENT_BROWSER_ENCRYPTION_KEY` encrypts the saved browser login;
+keep it in `~/.zshrc` or a secret manager.
 
 Per-project knowledge that isn't a single value (test commands, conventions the implementer follows and
 the codebase reviewer enforces (what your linter can't see, one line each), which directories count as modules for `/pr` diagrams) goes in a worker contract,
@@ -313,6 +314,9 @@ The workflow calls these but does not ship them:
 
   then move them into `~/.agents/skills/` and link them into `~/.claude/skills/` (re-run `./install.sh`).
   `/kickoff` asks `to-tickets` for extra ticket fields (Repo, Touches, Verify by, Prior art) as a caller requirement.
+  My copy of `to-tickets` carries small patches that are not published: the caller names the tracker (default:
+  local files under `~/.agents/scratch/`), the extra fields plus Easy to miss are in its template, and it
+  delegates fetching and exploring to `wf-context-gatherer` / `wf-explore`.
 - **diagram-design** — optional diagrams in `/pr` ([cathrynlavery/diagram-design](https://github.com/cathrynlavery/diagram-design)).
   In Claude Code: `/plugin marketplace add cathrynlavery/diagram-design`, then
   `/plugin install diagram-design@diagram-design`; PNG export needs `pip install playwright && playwright install chromium`.
@@ -321,8 +325,7 @@ The workflow calls these but does not ship them:
 
 ## Leak guard
 
-The repo is generated from a private one. `.githooks/pre-commit` (enable with
-`git config core.hooksPath .githooks`) and the `leak-guard` GitHub Actions workflow scan for home
+The repo is generated from a private one. `.githooks/pre-commit` (`install.sh` turns it on) and the `leak-guard` GitHub Actions workflow scan for home
 paths, emails, tokens and a committed `config.local.zsh` (`scripts/public-denylist.txt`) and run
 gitleaks. Keep secrets in your environment, never in this repo.
 
