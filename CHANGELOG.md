@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the maintainer's releases.
 
+## [4.6.1] - 2026-11-13
+
+### Added
+- The README now has Skills and Agents sections, with a mini-diagram for each skill and a matrix of the agents.
+- The README shows short demo clips for `/work`, `/deep-review`, and `/pr`, plus a hero clip above the pipeline diagram.
+### Changed
+- The README intro and section text are rewritten in plainer prose.
+
 ## [4.6.0] - 2026-11-12
 
 ### Added
