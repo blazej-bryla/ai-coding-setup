@@ -20,14 +20,14 @@ It's a set of skills, subagents, hooks and shell helpers. I give it an issue, an
 questions until the plan is clear, then writes tickets for both apps. `wt <branch> /work` opens a
 separate worktree for the task, with its own ports and its own database, and agents build the tickets in
 parallel. Every ticket is reviewed, and before it's committed I get a short explanation of what changed
-and why, so I don't end up committing code I haven't read. `/pr` writes the pull request with screenshots
-and asks before it pushes.
+and why, so I don't end up committing code I haven't read. When the tickets are done,
+`/work` pushes the task branch and runs `/pr`, which writes the pull request with screenshots.
 
 The things I cared about most:
 
 - Several tasks can run at the same time without stepping on each other, because each one has its own
   worktree, ports and database.
-- Nothing is pushed until I say yes.
+- Only the task's own branch is pushed without asking; force pushes and protected branches wait for my yes.
 - Agents have to show their work. A ticket comes back with every acceptance criterion marked `proven` or
   `not proven`, and a review finding can only block the merge if it's proven.
 - If a repo already has its own skills (for PR descriptions, tests, planning), the workflow uses those
@@ -99,7 +99,8 @@ Plans the work before anyone writes code. It reads the Linear issue (and the par
 one), looks through the code for something similar that already exists, writes `context.md`, and then
 asks you questions until nothing in the plan is open. Risky changes also get a rollback plan and a
 premortem. It ends with FE and BE tickets, each listing the files it touches, how to check it, and the one
-rule that's easiest to miss, plus the command that starts the work: `wt <branch> /work`.
+rule that's easiest to miss, plus the command that starts the work: `wt <branch> /work`. Then it asks
+whether to start `/work` now; only on yes does it hand the start to a Herdr board, if one runs.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/skill-kickoff-dark.png">
@@ -110,8 +111,8 @@ rule that's easiest to miss, plus the command that starts the work: `wt <branch>
 
 Builds the tickets. Every ticket whose blockers are done goes to its own `wf-implementer` in its own
 worktree, all at the same time. They come back one by one: the evidence gets checked, the change is
-reviewed (and opened in a browser if it touches the UI), you get a short teach round so you know what
-you're about to commit, and then it's squash-merged. When a blocker lands, the tickets waiting on it start.
+reviewed (and opened in a browser if it touches the UI), any dependency change is put to you, and then
+it's squash-merged. When a blocker lands, the tickets waiting on it start.
 
 <p align="center"><img width="720" alt="/work: three tickets build in parallel worktrees, each lands through review, teach and commit, then the blocked ticket starts" src="docs/media/skill-work.webp"></p>
 
@@ -139,7 +140,10 @@ GitHub review. Only a proven finding blocks.
 
 Writes the description in your repo's own PR format, using the branch, the tickets and the commits. It
 takes AFTER screenshots of the screens it changed (and BEFORE screenshots plus a visual diff if you've set
-up a baseline), asks before pushing, opens the PR and posts a short summary of the change.
+up a baseline), pushes the branch if origin doesn't have it, opens the PR and posts a short summary of the change.
+Before the summary it offers a local review guide: one page, in your browser only, with what changed, what
+was decided without you, what isn't proven, what the tests don't catch and which files to read first, each
+point linking into the PR's diff.
 The full argument syntax (story-mode tickets, `update nodiagram`) is in `WORKFLOW.md`.
 
 <p align="center"><img width="720" alt="/pr: the body builds from the branch, the browser takes AFTER screenshots into Evidence, the push waits for your yes, PR #128 opens" src="docs/media/skill-pr.webp"></p>
@@ -203,11 +207,11 @@ reviews, where judgement matters, Sonnet for building and searching, and Haiku f
 | Path | What |
 |---|---|
 | `skills/` | the slash commands above (`SKILL.md` each; `deep-review/prompts/` are the reviewer prompts) |
-| `skills/_shared/` | text several skills read: `TEACH.md` (the teach round), `IDENTITY.md` (slug, side, base), `CONTEXT.md` (context budget rules) |
-| `agents/` | subagents, namespaced so a repo's own `.claude/agents/` never shadows them: `wf-implementer`, `wf-explore`, `wf-context-gatherer`, `wf-reviewer-*` |
-| `hooks/` | `worktree-create.sh` (per-task worktrees, ports, per-worktree DB via `lib/db.sh`), `bash-guard.sh` (agents never start/kill dev servers or run watch-mode tests), `rtk-guard.sh`, `pr-created.sh`; `lib/config.sh` = every setting with its default |
+| `skills/_shared/` | text several skills read: `IDENTITY.md` (slug, side, base), `CONTEXT.md` (context budget rules) |
+| `agents/` | subagents, namespaced so a repo's own `.claude/agents/` never shadows them: `wf-implementer`, `wf-explore`, `wf-context-gatherer`, `wf-review-guide`, `wf-reviewer-*` |
+| `hooks/` | `worktree-create.sh` (per-task worktrees, ports, per-worktree DB via `lib/db.sh`), `bash-guard.sh` (agents start/stop dev servers only through `wtsrv`, never kill them, never run watch-mode tests; force pushes and pushes to protected branches ask), `rtk-guard.sh`, `pr-created.sh`; `lib/config.sh` = every setting with its default, `lib/portlock.sh` = the FIFO lock on the shared FE port |
 | `shell/worktrees.zsh` | `wt`, `wts`, `wtwho`, `cdwt`, `wtls`, `wtrm`, `wtclean`, `wtdb`, `ablogin`, `friction` |
-| `bin/` | `wtconf` (prints the effective config; `--ports` a worktree's ports), `wfprofile` (reads a repo's profile), `pr-diagram-check`, `settings-sync`, `quiet` (pass/fail commands: one `ok:` line or the last 40 lines), `abcheck` (one browser check, a compact PASS/FAIL summary), `tickets` (one line per ticket) |
+| `bin/` | `wtconf` (prints the effective config; `--ports` a worktree's ports), `wfprofile` (reads a repo's profile), `pr-diagram-check`, `guide-render` (the review guide's HTML), `settings-sync`, `quiet` (pass/fail commands: one `ok:` line or the last 40 lines), `abcheck` (one browser check, a compact PASS/FAIL summary), `tickets` (one line per ticket), `wtsrv` (the agent starts and stops dev servers: detached, the FE queued FIFO for the shared port) |
 | `config.example.zsh` | template for your `config.local.zsh` |
 | `scripts/` | the leak guard's denylist scan: `denylist-scan` + `public-denylist.txt` |
 | `.githooks/` | the leak-guard pre-commit hook |
@@ -240,7 +244,7 @@ Merge into `~/.claude/settings.json`:
 
 ```json
 {
-  "permissions": { "allow": ["Bash(~/.agents/bin/wtconf:*)", "Bash(~/.agents/bin/quiet:*)", "Bash(~/.agents/bin/abcheck:*)", "Bash(~/.agents/bin/tickets:*)", "Bash(~/.agents/bin/wfprofile:*)"] },
+  "permissions": { "allow": ["Bash(~/.agents/bin/wtconf:*)", "Bash(~/.agents/bin/quiet:*)", "Bash(~/.agents/bin/abcheck:*)", "Bash(~/.agents/bin/tickets:*)", "Bash(~/.agents/bin/wfprofile:*)", "Bash(~/.agents/bin/wtsrv:*)"] },
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [
@@ -259,7 +263,8 @@ Merge into `~/.claude/settings.json`:
 
 `bin/settings-sync` merges a repo-kept settings file (`~/.agents/settings.v3.1.json`, not included,
 so create your own) with the live one; a key set to `null` there is deleted. Skip it if you edit
-`~/.claude/settings.json` directly.
+`~/.claude/settings.json` directly. It also lists every agent and skill in the repo that isn't linked
+into `~/.claude/agents` / `~/.claude/skills`, with the `ln -s` for each (`--check` exits 1); it never links them itself.
 
 ## Configure
 
@@ -296,7 +301,7 @@ states to the project skill, e.g. "seams are pre-agreed in the ticket, don't ask
 and a sha256 fingerprint of every project file it relies on, read from one git ref (e.g. the default
 branch). `env` holds the repo's config values. Run `/wf-init` in a repo to write one: it discovers the repo's
 skills, agents and conventions, flags project skills that would break the workflow's gates (asking a user
-from a background worker, pushing, committing without the teach round), asks per slot, writes the profile and
+from a background worker, pushing, committing), asks per slot, writes the profile and
 dry-runs `/work` and `/pr` against it. No profile → every slot is the workflow's own, with a one-line hint. A
 fingerprinted file that changed or vanished stops the next run with the file named; re-running `/wf-init`
 then shows only that difference.
@@ -331,7 +336,7 @@ gitleaks. Keep secrets in your environment, never in this repo.
 
 ## Credits
 
-- `/deslop` and a few rules (issue-cause skepticism, agree-first replies, read-in-full, the dependency rule, the teach brief format) are adapted from [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, © 2025 Mario Zechner).
+- `/deslop` and a few rules (issue-cause skepticism, agree-first replies, read-in-full, the dependency rule) are adapted from [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, © 2025 Mario Zechner).
 - Evidence-bound work and reviews — the Easy-to-miss ticket line, proven / not proven acceptance marks, proven / plausible / unverified review findings, the repair cap, the no-archaeology and causes-with-evidence rules, the cold-reader rule — are adapted from [overment/limen](https://github.com/overment/limen) (MIT, © 2026 Adam Gospodarczyk).
 
 ## License

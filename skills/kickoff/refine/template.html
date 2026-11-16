@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title></title>
+<style>
+:root{--bg:#ffffff;--fg:#1d1f23;--muted:#6b7280;--line:#e5e7eb;--tag:#f3f4f6;--link:#0b62d6;--code:#f6f8fa;
+  --panel:#fafafa;--blocker:#b42318;--blocker-bg:#fde8e7;--estimate:#9a5b00;--estimate-bg:#fdf1dc;--detail:#475467;--detail-bg:#eef0f3;
+  --ok:#067647;--ok-bg:#e3f6ec;--focus:#0b62d6;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+@media (prefers-color-scheme: dark){:root{--bg:#16181d;--fg:#e6e8eb;--muted:#9aa1ab;--line:#2c3038;--tag:#23262d;--link:#6ea8ff;--code:#1f2228;
+  --panel:#1b1e24;--blocker:#ff8a80;--blocker-bg:#3a1f1e;--estimate:#f5c26b;--estimate-bg:#3a2e17;--detail:#c0c6cf;--detail-bg:#262a31;
+  --ok:#6fd8a3;--ok-bg:#183126;--focus:#6ea8ff}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow-x:hidden}
+a{color:var(--link)}
+code{background:var(--code);padding:0 4px;border-radius:4px;font-size:13px;word-break:break-all}
+button,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:var(--tag);border:1px solid var(--line);border-radius:6px;padding:5px 10px}
+button:hover{border-color:var(--muted)}
+button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+aside{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;border-right:1px solid var(--line);background:var(--panel);padding:16px}
+main{padding:20px 24px 40px;min-width:0;max-width:960px}
+h1{font-size:20px;margin:0 0 4px}
+.meta{color:var(--muted);font-size:13px;margin-bottom:16px}
+.group{margin:0 0 16px}
+.group h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;padding:4px 12px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips label{display:inline-flex;align-items:center;gap:4px;font-size:13px;background:var(--tag);border-radius:12px;padding:2px 8px;cursor:pointer}
+.progress{font-size:14px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar span{display:block;height:100%;background:var(--ok);width:0}
+.actions{display:flex;flex-direction:column;gap:6px}
+.toast{font-size:12px;color:var(--ok);min-height:1.2em}
+.issue{border-top:1px solid var(--line);padding:16px 0 8px}
+.issue h2{font-size:18px;margin:0 0 6px}
+.summary{margin:0 0 10px}
+details.known{margin:0 0 12px;border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+details.known summary{cursor:pointer;color:var(--muted);font-size:13px}
+details.known ul{margin:6px 0 2px;padding-left:20px}
+.scroll{overflow-x:auto;max-width:100%}
+.card{border:1px solid var(--line);border-radius:8px;padding:12px;margin:0 0 10px}
+.card.st-answered{border-left:4px solid var(--ok)}
+.card.st-skipped{opacity:.6}
+.head{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;font-size:12px}
+.badge{border-radius:10px;padding:1px 8px;font-weight:600}
+.w-blocker{color:var(--blocker);background:var(--blocker-bg)}
+.w-estimate{color:var(--estimate);background:var(--estimate-bg)}
+.w-detail{color:var(--detail);background:var(--detail-bg)}
+.chip{border-radius:10px;padding:1px 8px;background:var(--tag);color:var(--muted)}
+.qid{color:var(--muted);margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.qtext{font-weight:600;margin:0 0 4px}
+.why{color:var(--muted);font-size:13px;margin:0 0 6px}
+.proposal{font-size:14px;background:var(--code);border-radius:6px;padding:6px 8px;margin:0 0 8px}
+.proposal b{font-weight:600}
+.status{margin:0 0 6px}
+textarea{width:100%;min-height:56px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.empty{color:var(--muted);font-size:14px}
+@media (max-width:760px){
+  .layout{grid-template-columns:1fr}
+  aside{position:sticky;top:0;z-index:2;height:auto;max-height:50vh;border-right:0;border-bottom:1px solid var(--line);padding:10px 16px;
+    display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-start}
+  aside .group{margin:0}
+  aside .actions{flex-direction:row;flex-wrap:wrap}
+  main{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside id="controls">
+  <div class="group" id="lang-group"><h3 data-i18n="language"></h3>
+    <div class="seg" role="group" id="lang-seg"></div></div>
+  <div class="group"><h3 data-i18n="filterFor"></h3><div class="chips" id="f-for"></div></div>
+  <div class="group"><h3 data-i18n="filterWeight"></h3><div class="chips" id="f-weight"></div></div>
+  <div class="group"><h3 data-i18n="progress"></h3><div class="progress" id="progress"></div><div class="bar"><span id="bar"></span></div></div>
+  <div class="group actions">
+    <button type="button" id="copy" data-i18n="copy"></button>
+    <button type="button" id="clear" data-i18n="clear"></button>
+    <div class="toast" id="toast" role="status"></div>
+  </div>
+</aside>
+<main>
+  <h1 id="title"></h1>
+  <div class="meta" id="meta"></div>
+  <div id="issues"></div>
+</main>
+</div>
+<script id="data" type="application/json">__REFINE_DATA__</script>
+<script id="ui" type="application/json">__REFINE_UI__</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("data").textContent);
+  var WEIGHTS = ["blocker", "estimate", "detail"];
+  var FORS = ["po", "design", "be", "fe", "qa", "other"];
+  // UI strings come from skills/kickoff/refine/ui-<lang>.json, inlined by bin/refine-html.
+  var UI = JSON.parse(document.getElementById("ui").textContent);
+  var LANGS = ["pl", "en"].filter(function (l) { return UI[l] && typeof UI[l] === "object"; });
+  if (!LANGS.length) LANGS = Object.keys(UI);
+
+  var meeting = DATA.meeting || {};
+  var mTitle = meeting.title || {};
+  var KEY = "refine:" + (meeting.date || "") + ":" + (mTitle.pl || mTitle.en || "");
+
+  function load() {
+    try { var raw = window.localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function save() {
+    try { window.localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable: state lives in memory */ }
+  }
+  var stored = load();
+  // Default: Polish when both locales are present, otherwise the only one (English).
+  var state = {lang: LANGS[0], answers: {}, status: {}, fFor: {}, fWeight: {}};
+  if (stored && typeof stored === "object") {
+    if (LANGS.indexOf(stored.lang) !== -1) state.lang = stored.lang;
+    ["answers", "status", "fFor", "fWeight"].forEach(function (k) {
+      if (stored[k] && typeof stored[k] === "object") state[k] = stored[k];
+    });
+  }
+
+  function t(key) {
+    var cur = UI[state.lang] || {};
+    if (cur[key] != null) return cur[key];
+    var en = UI.en || {};
+    return en[key] != null ? en[key] : key;
+  }
+  // Label for an enum value (weight, for, category); falls back to the raw value.
+  function tv(prefix, value) {
+    var k = prefix + "." + value, s = t(k);
+    return s === k ? value : s;
+  }
+  function L(obj) {
+    if (obj == null) return "";
+    if (typeof obj === "string") return obj;
+    return obj[state.lang] || obj.en || obj.pl || "";
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function safeHref(h) { return /^https?:\/\//i.test(h || "") ? h : null; }
+  function allQuestions() {
+    var out = [];
+    (DATA.issues || []).forEach(function (iss) { (iss.questions || []).forEach(function (q) { out.push(q); }); });
+    return out;
+  }
+  function statusOf(q) { return state.status[q.id] || "open"; }
+  function visible(q) {
+    var anyFor = FORS.some(function (f) { return state.fFor[f]; });
+    var anyW = WEIGHTS.some(function (w) { return state.fWeight[w]; });
+    return (!anyFor || state.fFor[q["for"]]) && (!anyW || state.fWeight[q.weight]);
+  }
+
+  function renderStatic() {
+    document.documentElement.lang = state.lang;
+    var title = L(mTitle) || t("meeting");
+    document.title = title;
+    document.getElementById("title").textContent = title;
+    var nQ = allQuestions().length;
+    document.getElementById("meta").textContent =
+      (meeting.date || "") + " · " + (DATA.issues || []).length + " " + t("issues") + " · " + nQ + " " + t("questions");
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) { n.textContent = t(n.getAttribute("data-i18n")); });
+    document.getElementById("controls").setAttribute("aria-label", t("controls"));
+    renderLangSwitch();
+    renderChips("f-for", FORS, "fFor", "f");
+    renderChips("f-weight", WEIGHTS, "fWeight", "w");
+  }
+
+  // One locale → no switch; several → one button per locale code.
+  function renderLangSwitch() {
+    var group = document.getElementById("lang-group");
+    if (LANGS.length < 2) { group.style.display = "none"; return; }
+    var seg = document.getElementById("lang-seg");
+    seg.textContent = "";
+    LANGS.forEach(function (l) {
+      var b = el("button", null, l.toUpperCase());
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(l === state.lang));
+      b.addEventListener("click", function () { state.lang = l; save(); renderStatic(); renderIssues(); });
+      seg.appendChild(b);
+    });
+  }
+
+  function renderChips(id, values, stateKey, dictKey) {
+    var box = document.getElementById(id);
+    box.textContent = "";
+    values.forEach(function (v) {
+      var lab = el("label");
+      var cb = el("input");
+      cb.type = "checkbox";
+      cb.checked = !!state[stateKey][v];
+      cb.addEventListener("change", function () { state[stateKey][v] = cb.checked; save(); renderIssues(); });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(tv(dictKey, v)));
+      box.appendChild(lab);
+    });
+  }
+
+  function renderProgress() {
+    var qs = allQuestions();
+    var n = qs.filter(function (q) { return statusOf(q) === "answered"; }).length;
+    document.getElementById("progress").textContent = t("answeredOf").replace("{n}", n).replace("{m}", qs.length);
+    document.getElementById("bar").style.width = qs.length ? (100 * n / qs.length) + "%" : "0";
+  }
+
+  function card(q) {
+    var c = el("div", "card st-" + statusOf(q));
+    var head = el("div", "head");
+    head.appendChild(el("span", "badge w-" + q.weight, tv("w", q.weight)));
+    head.appendChild(el("span", "chip", tv("f", q["for"])));
+    if (q.category) head.appendChild(el("span", "chip", tv("c", q.category)));
+    head.appendChild(el("span", "qid", q.id));
+    c.appendChild(head);
+    c.appendChild(el("p", "qtext", L(q.text)));
+    if (q.why) c.appendChild(el("p", "why", t("why") + ": " + L(q.why)));
+    if (q.proposal) {
+      var p = el("div", "proposal");
+      p.appendChild(el("b", null, t("proposal") + ": "));
+      p.appendChild(document.createTextNode(L(q.proposal)));
+      c.appendChild(p);
+    }
+    var seg = el("div", "seg status");
+    seg.setAttribute("role", "group");
+    ["open", "answered", "skipped"].forEach(function (s) {
+      var b = el("button", null, t(s));
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(statusOf(q) === s));
+      b.addEventListener("click", function () {
+        state.status[q.id] = s; save(); renderIssues();
+      });
+      seg.appendChild(b);
+    });
+    c.appendChild(seg);
+    var ta = el("textarea");
+    ta.placeholder = t("answerPh");
+    ta.value = state.answers[q.id] || "";
+    ta.setAttribute("aria-label", q.id);
+    ta.addEventListener("input", function () {
+      state.answers[q.id] = ta.value;
+      if (ta.value.trim() && statusOf(q) === "open") {
+        state.status[q.id] = "answered";
+        c.className = "card st-answered";
+        Array.prototype.forEach.call(seg.children, function (b, i) { b.setAttribute("aria-pressed", String(i === 1)); });
+        renderProgress();
+      }
+      save();
+    });
+    c.appendChild(ta);
+    return c;
+  }
+
+  function renderIssues() {
+    var root = document.getElementById("issues");
+    root.textContent = "";
+    var shown = 0;
+    (DATA.issues || []).forEach(function (iss) {
+      var sec = el("section", "issue");
+      var h = el("h2");
+      var href = safeHref(iss.url);
+      var idNode = href ? el("a", null, iss.id) : el("span", null, iss.id);
+      if (href) { idNode.href = href; idNode.target = "_blank"; idNode.rel = "noopener noreferrer"; }
+      h.appendChild(idNode);
+      h.appendChild(document.createTextNode(" — " + (iss.title || "")));
+      sec.appendChild(h);
+      if (iss.summary) sec.appendChild(el("p", "summary", L(iss.summary)));
+      if (iss.known && iss.known.length) {
+        var d = el("details", "known");
+        d.appendChild(el("summary", null, t("known") + " (" + iss.known.length + ")"));
+        var wrap = el("div", "scroll");
+        var ul = el("ul");
+        iss.known.forEach(function (k) {
+          var li = el("li", null, L(k) + " — ");
+          li.appendChild(el("code", null, k.source || ""));
+          ul.appendChild(li);
+        });
+        wrap.appendChild(ul);
+        d.appendChild(wrap);
+        sec.appendChild(d);
+      }
+      var qs = (iss.questions || []).slice().filter(visible).sort(function (a, b) {
+        return WEIGHTS.indexOf(a.weight) - WEIGHTS.indexOf(b.weight);
+      });
+      qs.forEach(function (q) { sec.appendChild(card(q)); });
+      shown += qs.length;
+      if (!qs.length) sec.appendChild(el("p", "empty", t("noQuestions")));
+      root.appendChild(sec);
+    });
+    renderProgress();
+  }
+
+  function markdown() {
+    var lines = ["# Refinement answers " + (meeting.date || "")];
+    (DATA.issues || []).forEach(function (iss) {
+      lines.push("## " + iss.id);
+      (iss.questions || []).forEach(function (q) {
+        var s = statusOf(q);
+        var ans = (state.answers[q.id] || "").replace(/\s+/g, " ").trim();
+        if (s === "answered") lines.push("- [" + q.id + "] answered: " + ans);
+        else if (s === "skipped") lines.push("- [" + q.id + "] skipped");
+        else lines.push("- [" + q.id + "] open");
+      });
+    });
+    return lines.join("\n") + "\n";
+  }
+
+  function toast(msg) {
+    var n = document.getElementById("toast");
+    n.textContent = msg;
+    setTimeout(function () { if (n.textContent === msg) n.textContent = ""; }, 3000);
+  }
+
+  function fallbackCopy(text) {
+    var ta = el("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "0"; ta.style.left = "0"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) { toast(t("copied")); return; }
+    var box = el("textarea");
+    box.value = text;
+    box.style.minHeight = "160px";
+    var actions = document.querySelector(".actions");
+    var old = document.getElementById("copy-box");
+    if (old) old.parentNode.removeChild(old);
+    box.id = "copy-box";
+    actions.appendChild(box);
+    box.select();
+    toast(t("copyFail"));
+  }
+
+  document.getElementById("copy").addEventListener("click", function () {
+    var text = markdown();
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { toast(t("copied")); }, function () { fallbackCopy(text); });
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    fallbackCopy(text);
+  });
+  document.getElementById("clear").addEventListener("click", function () {
+    var ok = false;
+    try { ok = window.confirm(t("confirmClear")); } catch (e) { ok = false; }
+    if (!ok) return;
+    state.answers = {}; state.status = {};
+    save(); renderIssues();
+  });
+
+  renderStatic();
+  renderIssues();
+})();
+</script>
+</body>
+</html>

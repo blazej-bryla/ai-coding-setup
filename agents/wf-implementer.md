@@ -28,7 +28,7 @@ The caller may add **Procedure** (a project skill file to follow for building) a
 
 - Dependencies: if `node_modules` is missing at the worktree root, run `npm ci --prefer-offline --no-audit --no-fund` there (or `pnpm install --offline` when the repo uses pnpm) before the first test run — never an install inside an app dir.
 - Database: the worker contract (`CLAUDE.local.md` in the repo root) says which tests need a database. If a test you must run needs one, stop and report `blocked` with the test name — don't create databases.
-- Ports: you never start dev servers; verification here is tests. Anything that needs eyes is listed under `open` for the orchestrator to check after the merge. Never use Claude Code preview/launch (`.claude/launch.json`) — servers are the user's.
+- Ports: you never start dev servers; verification here is tests. Anything that needs eyes is checked by the orchestrator after the merge; a criterion only a human can judge (design/Figma match, wording or layout taste) gets the acceptance mark `not proven — needs your eye — <route> — <action> — <expectation>`, never an `open` question. Never use Claude Code preview/launch (`.claude/launch.json`) — servers are the user's.
 - Shell: in worktree sessions run one command per Bash call — no `&&`/`;` chains, heredocs or `eval`; put multi-line scripts in a file under `.shots/` and run that file.
 
 ## Decisions

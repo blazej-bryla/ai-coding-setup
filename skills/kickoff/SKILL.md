@@ -1,7 +1,7 @@
 ---
 name: kickoff
-description: Plan a Linear task end to end — grilled context.md in ~/.agents/scratch/<slug>/, then tickets.
-argument-hint: "<Linear issue link> + optional intent/notes"
+description: Plan a Linear task end to end — grilled context.md in ~/.agents/scratch/<slug>/, then tickets. `/kickoff refine <links…>` prepares questions for a refinement meeting instead (REFINE.md).
+argument-hint: "<Linear issue link> + optional intent/notes | refine <link> [<link>…]"
 disable-model-invocation: true
 model: opus[1m]
 effort: high
@@ -16,6 +16,8 @@ Turn a pasted Linear issue into a fully grilled `context.md` (plus tickets) unde
 **Cold reader** — every question or gate message to the user follows the Cold reader rule in `~/.agents/skills/_shared/CONTEXT.md` (one or two lines of state — task, ticket, what happened since their last message — then the question; the reply is as big as the question).
 
 Throughout: pull context lazily — the issue itself first, the wider story only when it exists — and delegate heavy research (story-wide Linear reads, codebase exploration) to subagents on `sonnet` so the main conversation stays small and cheap tokens do the fetching. Keep the interview and every decision in the main conversation — subagents cannot talk to the user.
+
+**Refine mode** — `/kickoff refine <link> [<link>…]` prepares questions for a team refinement meeting instead of tickets. Its rules live in `~/.agents/skills/kickoff/REFINE.md`: read it and follow it; it reuses steps 1–4 and never runs step 5.
 
 ## 1. Fetch the issue and derive the workdir
 
@@ -36,6 +38,7 @@ Inspect the workdir before doing any work:
 | Found in `~/.agents/scratch/<slug>/` | Action |
 |---|---|
 | `context.md` with `stage: grilled` | Skip to step 5 |
+| `context.md` with `stage: refining` | Refine mode: REFINE.md §1.3. Otherwise: REFINE.md §1.8, then step 4 |
 | `context.md` with `stage: draft` | Skip to step 4 |
 | no `context.md` | Continue with step 3 |
 
@@ -125,4 +128,4 @@ For Linear publication use the linear MCP tools (`save_issue` with the parent se
 
 ## 6. Wrap up
 
-Report: the workdir path, artifacts produced, any commits made, and the suggested next step (new branch, implement the first unblocked ticket). Print two launch lines: `In this session: /work` (only when this session already runs in the task's worktree) and `New session: wt <full-branch> /work` (story mode with an epic base: `wt <full-branch> --base <epic branch> /work`) (opens Claude as `<slug>` in the task's worktree). `/work` with no argument takes `tickets/fe/` and `tickets/be/` as one frontier; one ticket only: `/work <ticket file>`. If the conversation gets heavy mid-run, tell the user to `/clear`, then re-run `/kickoff <same link>` — step 2 resumes from the artifacts on disk.
+Report: the workdir path, artifacts produced, any commits made, and the suggested next step (new branch, implement the first unblocked ticket). Print two launch lines: `In this session: /work` (only when this session already runs in the task's worktree) and `New session: wt <full-branch> /work` (story mode with an epic base: `wt <full-branch> --base <epic branch> /work`) (opens Claude as `<slug>` in the task's worktree). Then ask (AskUserQuestion), every time, with no recommended option: **Start /work now** / **Not now**. Never start anything without that answer. Not now (or no answer) → stop here; the launch lines above stand. Start → write the request to `~/.agents/run/herdr/.start-<slug>.json.tmp`, then `mv` it to `~/.agents/run/herdr/start-<slug>.json` (atomic): `{"slug", "branch": <full branchName>, "base": <epic branch or null>, "cmd": "/work", "created": <ISO time>}`; then wait at most 10 s for Herdr to take it (one bash loop, 1 s steps, checking the file is gone). Gone → say in one line "started in Herdr: <slug>". Still there → delete it (a late start must never happen) and say in one line that Herdr didn't pick it up, then repeat the `wt …` launch line. `/work` with no argument takes `tickets/fe/` and `tickets/be/` as one frontier; one ticket only: `/work <ticket file>`. If the conversation gets heavy mid-run, tell the user to `/clear`, then re-run `/kickoff <same link>` — step 2 resumes from the artifacts on disk.

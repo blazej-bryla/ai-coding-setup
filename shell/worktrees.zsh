@@ -10,7 +10,7 @@ source "${${(%):-%x}:A:h}/../hooks/lib/node.sh"   # wt_node_use: the repo's Node
 case ":$PATH:" in *":$HOME/.agents/bin:"*) ;; *) export PATH="$HOME/.agents/bin:$PATH" ;; esac   # settings-sync
 # Browser: agent-browser CLI. One session per task, `--session <slug> --restore`, seeded with
 # `--state $AB_STATE` (the login `ablogin` saves; --state wins over the restored state, so re-running ablogin
-# refreshes every task session on its next open). Headed via ~/.agent-browser/config.json; the viewport isn't a
+# refreshes every task session on its next open). Headless by default (~/.agent-browser/config.json); only ablogin opens a window (--headed); the viewport isn't a
 # config key, so every session starts with `set viewport 1440 900`. State is encrypted with
 # AGENT_BROWSER_ENCRYPTION_KEY (exported in ~/.zshrc, never in ~/.agents).
 # MCP instead of the CLI, should a skill ever need it:
@@ -37,15 +37,32 @@ wt() {
   if [ ! -d "$WT_ROOT/$slug" ] && [ "$(git -C "$MONO_REPO" symbolic-ref -q --short HEAD)" = "$branch" ]; then
     echo "the main checkout is on this branch — git -C $MONO_REPO switch $WT_BASE_BRANCH, then run wt again"; return 1
   fi
-  cd "$MONO_REPO" && WT_BRANCH=$branch WT_BASE=$base claude --worktree "$slug" --name "$slug" --permission-mode acceptEdits --add-dir "$HOME/.agents/scratch" "$@"   # scratch: task state (context.md, tickets) lives outside the worktree
+  cd "$MONO_REPO" && WT_BRANCH=$branch WT_BASE=$base claude --worktree "$slug" --name "$slug" --permission-mode auto --add-dir "$HOME/.agents/scratch" -- "$@"   # scratch: task state (context.md, tickets) lives outside the worktree; `--` ends --add-dir (variadic), else it swallows the prompt
 }
 # Remote-API mode: the deployed API (and the SSO dev app) may accept only localhost:$WT_REMOTE_FE_PORT,
 # so one FE task at a time holds that port (browser sessions are per task and run in parallel). `wtwho` shows who; `wts … --take` swaps.
 _listener() { lsof -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; }            # pid listening on port
 _pcwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'; }             # cwd of pid
 _holder() { local pid; pid=$(_listener "$1") || return 1; [ -n "$pid" ] && _pcwd "$pid"; }
+# the FIFO lock on R (hooks/lib/portlock.sh, bash): a human `wts` claims it without waiting; wtsrv queues for it
+_WTPL=${${(%):-%x}:A:h}/../hooks/lib/portlock.sh
+_wtpl() { PL_PORT=$WT_REMOTE_FE_PORT bash -c '. "$0"; "$@"' "$_WTPL" "$@"; }   # _wtpl pl_<fn> args…
+_wtclaim() {  # <key> <take> — claim R for this human run; 0 claimed, 1 refused (message printed)
+  local key=$1 take=$2 out h n=0
+  out=$(_wtpl pl_claim_human "$key" $$) && return 0
+  h=${out#held by }
+  if [ -z "$take" ]; then
+    echo "port $WT_REMOTE_FE_PORT is reserved by $h — \`wts $key fe --take\` takes it"; return 1
+  fi
+  ~/.agents/bin/wtsrv down "$h" fe >/dev/null 2>&1   # an agent's server: stopped through wtsrv (no-op for a human holder)
+  until out=$(_wtpl pl_claim_human "$key" $$); do
+    n=$((n+1)); [ $n -ge 10 ] && { echo "port $WT_REMOTE_FE_PORT still reserved by ${out#held by } after --take"; return 1; }
+    sleep 0.5
+  done
+}
 
 # wts <slug|branch> <fe|be> [--local|--remote] [--port N] [--take]
+#   agents start servers through `wtsrv` (bin/wtsrv), humans through `wts`; both respect the FIFO lock on port R
 #   both: `nvm use` the repo's .nvmrc / engines.node, deps present (else: fix, `wt <slug>` reinstalls)
 #   be: the per-worktree DB first (created lazily, here), the BE extras once, then the BE on its PORT (.shots/.be-url while it runs)
 #   fe: the FE extras once (e.g. e2e browsers), then: this worktree's BE listening → local API, else the remote API — decided now; env files untouched
@@ -77,23 +94,32 @@ wts() {
     eval "$WT_FE_SETUP_CMD" || { echo "wts: FE setup failed — $WT_FE_SETUP_CMD"; return 1; }
     mkdir -p .shots && : > .shots/.fe-setup
   fi
-  local fe="$WT_FE_DIR" bep api
+  local fe="$WT_FE_DIR" bep api claimed=""
   bep=$(_port "$WT_BE_DIR")
   [ -z "$mode" ] && { [ -n "$bep" ] && [ -n "$(_listener "$bep")" ] && mode=local || mode=remote; }
   if [ "$mode" = local ]; then
     port=${port:-$(_port "$fe")}
     [ -n "$port" ] || port=$(( WT_FE_PORT_BASE + $(printf %s "$key" | cksum | cut -d' ' -f1) % 40 ))   # worktree made before the hook
     api="http://localhost:$bep"
+    if [ -z "$WTSRV" ] && [ "$port" = "$WT_REMOTE_FE_PORT" ]; then
+      _wtclaim "$key" "$take" || return 1
+      claimed=1
+    fi
     echo "FE :$port → local BE ($api)"
     echo "local mode on :$port — SSO login works only if this port is an allowed callback of your auth provider"
   else
     port=${port:-$WT_REMOTE_FE_PORT}                     # the remote API may accept this origin only
     api=$WT_REMOTE_API
     local pid holder
+    if [ -z "$WTSRV" ] && [ -z "$take" ] && [ "$port" = "$WT_REMOTE_FE_PORT" ]; then
+      _wtclaim "$key" "" || return 1
+      claimed=1
+    fi
     pid=$(_listener "$port")
     if [ -n "$pid" ]; then
       holder=$(_pcwd "$pid")
       if [ -z "$take" ]; then
+        [ -n "$claimed" ] && _wtpl pl_release "$key" >/dev/null 2>&1
         echo "port $port busy — held by ${holder:t} ($holder) — \`wts $key fe --take\` to take it, or --local / --port N"; return 1
       fi
       case "$holder" in "$WT_ROOT"/*|"$MONO_REPO"|"$MONO_REPO"/*) ;; *)
@@ -110,12 +136,16 @@ wts() {
       [ -z "$(_listener "$port")" ] || { echo "port $port still busy after --take"; return 1; }
       echo "took :$port from ${hroot:t}"
     fi
+    if [ -z "$WTSRV" ] && [ -n "$take" ] && [ "$port" = "$WT_REMOTE_FE_PORT" ]; then
+      _wtclaim "$key" 1 || return 1
+      claimed=1
+    fi
     echo "FE :$port → remote API ($api)"
   fi
   setopt local_options local_traps
   local urlf="$PWD/.shots/.fe-url"
   mkdir -p .shots && echo "http://localhost:$port" > "$urlf"   # skills read AFTER_URL from here
-  trap "rm -f '$urlf'" EXIT INT TERM
+  trap "rm -f '$urlf'${claimed:+; _wtpl pl_release '$key' >/dev/null 2>&1}" EXIT INT TERM
   local PORT=$port
   local -x "$FE_API_VAR=$api"   # exported for every step of WT_FE_DEV_CMD (e.g. a build step before the dev server), not only the first
   eval "$WT_FE_DEV_CMD"
@@ -133,7 +163,7 @@ wtwho() {
 }
 # ablogin — log in once in a headed session (auth-base); task sessions start from its saved state
 ablogin() {
-  local ab=(agent-browser --session auth-base --restore)
+  local ab=(agent-browser --session auth-base --restore --headed)
   [ -n "$AGENT_BROWSER_ENCRYPTION_KEY" ] || echo "note: AGENT_BROWSER_ENCRYPTION_KEY not set — the state will be saved unencrypted"
   "${ab[@]}" open "http://localhost:$WT_REMOTE_FE_PORT" >/dev/null || return 1
   "${ab[@]}" set viewport 1440 900 >/dev/null
@@ -175,6 +205,7 @@ wtrm() {
   local slug d db main; slug=$(_slug "$1")
   for d in "$WT_ROOT/$slug" "$WT_ROOT/$slug-fe" "$WT_ROOT/$slug-be"; do
     [ -d "$d" ] || continue
+    ~/.agents/bin/wtsrv down "$slug" >/dev/null 2>&1
     db=$(_wtdbname "$d"); main=$(_wtmain "$d")
     git -C "${main:-$MONO_REPO}" worktree remove --force "$d" && echo "removed $d" && _wtdbdrop "$db"
   done

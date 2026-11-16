@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""guide-render \u2014 render a review guide (content.json) into one self-contained HTML page.
+
+  guide-render <content.json> <out.html>
+
+Prints `guide: <out> (<n> blocks, diagram: yes|no)`; exit 2 with the reason on invalid JSON or schema.
+The layout rules live here, not in the agent that writes content.json: fixed block titles and order,
+max 5 bullets per block, text <= 140 chars, every bullet needs a `source`, everything HTML-escaped,
+no external resources (inline CSS, the PNG as a data URI, no scripts).
+"""
+import base64
+import hashlib
+import html
+import json
+import os
+import sys
+
+BLOCKS = [
+    ("changed", "Co si\u0119 zmieni\u0142o"),
+    ("decisions", "Decyzje bez Ciebie"),
+    ("unproven", "Nieudowodnione"),
+    ("blind_spots", "Czego testy nie \u0142api\u0105"),
+    ("look_first", "Gdzie patrze\u0107 najpierw"),
+]
+MAX_BULLETS = 5
+MAX_TEXT = 140
+SEP = " \u00b7 "
+
+CSS = """
+:root{--bg:#ffffff;--fg:#1d1f23;--muted:#6b7280;--line:#e5e7eb;--tag:#f3f4f6;--link:#0b62d6;--code:#f6f8fa}
+@media (prefers-color-scheme: dark){:root{--bg:#16181d;--fg:#e6e8eb;--muted:#9aa1ab;--line:#2c3038;--tag:#23262d;--link:#6ea8ff;--code:#1f2228}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:900px;margin:0 auto;padding:20px 16px 28px}
+h1{font-size:20px;margin:0 0 4px}
+.meta{color:var(--muted);font-size:13px;margin-bottom:14px}
+a{color:var(--link)}
+figure{margin:0 0 14px}
+figure img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
+figcaption,.nodiagram{color:var(--muted);font-size:13px}
+.nodiagram{margin:0 0 14px}
+section{border-top:1px solid var(--line);padding:8px 0 4px}
+h2{font-size:15px;margin:0 0 4px}
+ul{margin:0;padding-left:20px}
+li{margin:2px 0}
+code{background:var(--code);padding:0 4px;border-radius:4px;font-size:13px}
+.src{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--tag);color:var(--muted);font-size:11px}
+.links{border-top:1px solid var(--line);padding-top:8px}
+footer{color:var(--muted);font-size:12px;margin-top:12px}
+"""
+
+
+class SchemaError(Exception):
+    pass
+
+
+def need(cond, msg):
+    if not cond:
+        raise SchemaError(msg)
+
+
+def is_str(v):
+    return isinstance(v, str)
+
+
+def opt_str(v):
+    return v is None or isinstance(v, str)
+
+
+def validate(d):
+    need(isinstance(d, dict), "top level must be an object")
+    need(is_str(d.get("title")), "title: string required")
+    need(is_str(d.get("head")), "head: string required")
+    pr = d.get("pr")
+    if pr is not None:
+        need(isinstance(pr, dict), "pr: object or null")
+        need(is_str(pr.get("url")), "pr.url: string required")
+        need(isinstance(pr.get("number"), int) and not isinstance(pr.get("number"), bool), "pr.number: int required")
+    dg = d.get("diagram")
+    need(isinstance(dg, dict), "diagram: object required")
+    for k in ("png", "caption", "none_reason"):
+        need(opt_str(dg.get(k)), f"diagram.{k}: string or null")
+    if dg.get("png"):
+        need(os.path.isabs(dg["png"]), "diagram.png: absolute path required")
+    blocks = d.get("blocks")
+    need(isinstance(blocks, list), "blocks: list required")
+    for i, b in enumerate(blocks):
+        need(isinstance(b, dict) and is_str(b.get("id")), f"blocks[{i}]: object with string id")
+        need(isinstance(b.get("bullets"), list), f"blocks[{i}].bullets: list required")
+        for j, u in enumerate(b["bullets"]):
+            w = f"blocks[{i}].bullets[{j}]"
+            need(isinstance(u, dict), f"{w}: object required")
+            need(is_str(u.get("text")), f"{w}.text: string required")
+            need(opt_str(u.get("source")), f"{w}.source: string or null")
+            need(opt_str(u.get("path")), f"{w}.path: string or null")
+            ln = u.get("line")
+            need(ln is None or (isinstance(ln, int) and not isinstance(ln, bool)), f"{w}.line: int or null")
+    links = d.get("links", [])
+    need(isinstance(links, list), "links: list")
+    for i, l in enumerate(links):
+        need(isinstance(l, dict) and is_str(l.get("label")) and is_str(l.get("href")), f"links[{i}]: label and href strings")
+
+
+def cut(text):
+    text = " ".join(text.split())
+    if len(text) <= MAX_TEXT:
+        return text, False
+    head = text[: MAX_TEXT - 1]
+    sp = head.rfind(" ")
+    if sp > MAX_TEXT // 2:
+        head = head[:sp]
+    return head.rstrip(" ,;:.-") + "\u2026", True
+
+
+def esc(s):
+    return html.escape(s, quote=True)
+
+
+def safe_href(h):
+    return h if h.split(":", 1)[0].lower() in ("http", "https", "file") else "#"
+
+
+def render(d):
+    pr = d.get("pr")
+    by_id = {}
+    for b in d["blocks"]:
+        by_id.setdefault(b["id"], []).extend(b["bullets"])
+    dropped_bullets = cut_texts = no_source = 0
+    sections = []
+    for bid, title in BLOCKS:
+        items = []
+        for u in by_id.get(bid, []):
+            if not (u.get("source") or "").strip():
+                no_source += 1
+                continue
+            if len(items) == MAX_BULLETS:
+                dropped_bullets += 1
+                continue
+            text, was_cut = cut(u["text"])
+            cut_texts += was_cut
+            li = esc(text)
+            path = u.get("path")
+            if path:
+                if pr:
+                    anchor = "diff-" + hashlib.sha256(path.encode()).hexdigest()
+                    if u.get("line") is not None:
+                        anchor += f"R{u['line']}"
+                    href = pr["url"].rstrip("/") + "/files#" + anchor
+                    label = path + (f":{u['line']}" if u.get("line") is not None else "")
+                    li += f' \u2014 <a href="{esc(safe_href(href))}"><code>{esc(label)}</code></a>'
+                else:
+                    label = path + (f":{u['line']}" if u.get("line") is not None else "")
+                    li += f" \u2014 <code>{esc(label)}</code>"
+            li += f'<span class="src">{esc(u["source"].strip())}</span>'
+            items.append(f"<li>{li}</li>")
+        if items:
+            sections.append(f'<section><h2>{esc(title)}</h2><ul>{"".join(items)}</ul></section>')
+
+    dg = d["diagram"]
+    has_diagram = False
+    diagram_html = ""
+    if dg.get("png"):
+        try:
+            with open(dg["png"], "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+            has_diagram = True
+            cap = f"<figcaption>{esc(dg['caption'])}</figcaption>" if dg.get("caption") else ""
+            diagram_html = f'<figure><img alt="diagram" src="data:image/png;base64,{data}">{cap}</figure>'
+        except OSError as e:
+            raise SchemaError(f"diagram.png: cannot read ({e.strerror})")
+    elif dg.get("none_reason"):
+        diagram_html = f'<p class="nodiagram">bez diagramu: {esc(dg["none_reason"])}</p>'
+
+    meta = []
+    if pr:
+        meta.append(f'<a href="{esc(safe_href(pr["url"]))}">PR #{pr["number"]}</a>')
+    meta.append(f"head <code>{esc(d['head'])}</code>")
+
+    links_html = ""
+    if d.get("links"):
+        lis = "".join(f'<li><a href="{esc(safe_href(l["href"]))}">{esc(l["label"])}</a></li>' for l in d["links"])
+        links_html = f'<section class="links"><h2>Przegl\u0105d</h2><ul>{lis}</ul></section>'
+
+    foot = []
+    if dropped_bullets or cut_texts:
+        foot.append(f"skr\u00f3cono: {dropped_bullets} punkt\u00f3w, {cut_texts} tekst\u00f3w")
+    if no_source:
+        foot.append(f"pomini\u0119to bez \u017ar\u00f3d\u0142a: {no_source}")
+    footer = f"<footer>{esc(SEP.join(foot))}</footer>" if foot else ""
+
+    page = (
+        '<!doctype html><html lang="pl"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{esc(d['title'])}</title><style>{CSS}</style></head><body><main>"
+        f"<h1>{esc(d['title'])}</h1><div class=\"meta\">{SEP.join(meta)}</div>"
+        f"{diagram_html}{''.join(sections)}{links_html}{footer}</main></body></html>\n"
+    )
+    return page, len(sections), has_diagram
+
+
+def main(argv):
+    if len(argv) != 3:
+        print("usage: guide-render <content.json> <out.html>", file=sys.stderr)
+        return 2
+    src, out = argv[1], argv[2]
+    try:
+        with open(src, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"guide-render: invalid JSON: {e}", file=sys.stderr)
+        return 2
+    try:
+        validate(d)
+        page, n, has_diagram = render(d)
+    except SchemaError as e:
+        print(f"guide-render: invalid schema: {e}", file=sys.stderr)
+        return 2
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(page)
+    print(f"guide: {out} ({n} blocks, diagram: {'yes' if has_diagram else 'no'})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

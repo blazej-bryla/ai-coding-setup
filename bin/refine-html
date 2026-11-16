@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""refine-html — build the refinement-meeting page from refinement.json (schema: skills/kickoff/REFINE.md §1.6).
+
+  refine-html <data.json> <out.html>
+
+Prints `ok: <out.html> (<n> issues, <m> questions, ui: en,pl)` (or `ui: en`); exit 1 with the reason on
+invalid JSON, schema, UI strings or template; no output file is written on failure.
+The refine dir is ${REFINE_DIR:-<this repo>/skills/kickoff/refine} (the override is for tests). It holds
+template.html, ui-en.json (required) and ui-pl.json (optional, private; its keys must equal ui-en.json's).
+The data goes into `<script id="data" type="application/json">`, the UI strings into `<script id="ui" …>`
+as {"en": {...}[, "pl": {...}]}; `<`, `>` and `&` are written as \\u003c \\u003e \\u0026, so nothing can
+close the script tag. Rendering happens in the page (textContent only), not here.
+"""
+import json
+import os
+import re
+import sys
+
+DATA_PH = "__REFINE_DATA__"
+UI_PH = "__REFINE_UI__"
+REFINE_DIR = os.environ.get("REFINE_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "skills", "kickoff", "refine")
+
+
+class SchemaError(Exception):
+    pass
+
+
+def need(cond, msg):
+    if not cond:
+        raise SchemaError(msg)
+
+
+def is_str(v):
+    return isinstance(v, str) and v.strip() != ""
+
+
+def validate(d):
+    need(isinstance(d, dict), "top level must be an object")
+    need(isinstance(d.get("meeting"), dict), "meeting: object required")
+    issues = d.get("issues")
+    need(isinstance(issues, list), "issues: list required")
+    n = 0
+    for i, iss in enumerate(issues):
+        w = f"issues[{i}]"
+        need(isinstance(iss, dict) and is_str(iss.get("id")), f"{w}: object with string id")
+        qs = iss.get("questions", [])
+        need(isinstance(qs, list), f"{w}.questions: list required")
+        for j, q in enumerate(qs):
+            wq = f"{w}.questions[{j}]"
+            need(isinstance(q, dict), f"{wq}: object required")
+            for k in ("id", "for", "weight"):
+                need(is_str(q.get(k)), f"{wq}.{k}: string required")
+            t = q.get("text")
+            need(isinstance(t, dict), f"{wq}.text: object required")
+            for lang in ("pl", "en"):
+                need(is_str(t.get(lang)), f"{wq}.text.{lang}: string required")
+            n += 1
+    return len(issues), n
+
+
+def serialize(d):
+    s = json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+    return s.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+
+
+def load_ui():
+    """Return {"en": {...}[, "pl": {...}]}; raise SchemaError with the reason."""
+    def read(name):
+        path = os.path.join(REFINE_DIR, name)
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+        except OSError as e:
+            raise SchemaError(f"cannot read {path}: {e.strerror}")
+        except json.JSONDecodeError as e:
+            raise SchemaError(f"{path}: invalid JSON: {e}")
+        need(isinstance(d, dict) and all(isinstance(v, str) for v in d.values()), f"{path}: flat {{\"key\": \"text\"}} object required")
+        return d
+
+    ui = {"en": read("ui-en.json")}
+    if os.path.exists(os.path.join(REFINE_DIR, "ui-pl.json")):
+        pl = read("ui-pl.json")
+        missing = sorted(set(ui["en"]) - set(pl))
+        extra = sorted(set(pl) - set(ui["en"]))
+        if missing or extra:
+            parts = []
+            if missing:
+                parts.append("missing: " + ", ".join(missing))
+            if extra:
+                parts.append("extra: " + ", ".join(extra))
+            raise SchemaError("ui-pl.json keys differ from ui-en.json (" + "; ".join(parts) + ")")
+        ui["pl"] = pl
+    return ui
+
+
+def fill(tpl, values):
+    """Replace each placeholder (exactly once in the template) in one pass, so no injected text is re-scanned."""
+    for ph in values:
+        need(tpl.count(ph) == 1, f"template must contain {ph} exactly once (found {tpl.count(ph)})")
+    parts = re.split("(" + "|".join(map(re.escape, values)) + ")", tpl)
+    return "".join(serialize(values[p]) if p in values else p for p in parts)
+
+
+def main(argv):
+    if len(argv) != 3:
+        print("usage: refine-html <data.json> <out.html>", file=sys.stderr)
+        return 1
+    src, out = argv[1], argv[2]
+    try:
+        with open(src, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"refine-html: invalid JSON: {e}", file=sys.stderr)
+        return 1
+    try:
+        n_issues, n_q = validate(d)
+    except SchemaError as e:
+        print(f"refine-html: invalid schema: {e}", file=sys.stderr)
+        return 1
+    template = os.path.join(REFINE_DIR, "template.html")
+    try:
+        with open(template, encoding="utf-8") as f:
+            tpl = f.read()
+    except OSError as e:
+        print(f"refine-html: cannot read template {template}: {e.strerror}", file=sys.stderr)
+        return 1
+    try:
+        ui = load_ui()
+        page = fill(tpl, {DATA_PH: d, UI_PH: ui})
+    except SchemaError as e:
+        print(f"refine-html: {e}", file=sys.stderr)
+        return 1
+    try:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(page)
+    except OSError as e:
+        print(f"refine-html: cannot write {out}: {e.strerror}", file=sys.stderr)
+        return 1
+    print(f"ok: {out} ({n_issues} issues, {n_q} questions, ui: {','.join(ui)})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

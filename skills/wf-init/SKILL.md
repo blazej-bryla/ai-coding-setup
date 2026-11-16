@@ -47,7 +47,7 @@ Per slot, a proposal with a one-line reason:
 **Gate check** — flag every candidate that would break my gates when run inside my workflow, quoting the line:
 
 - asks the user (a background worker has no user: `confirm with the user`, `ask`, AskUserQuestion);
-- commits (without my teach round) or pushes, posts to a tracker or chat, opens a PR;
+- commits or pushes, posts to a tracker or chat, opens a PR;
 - starts or kills servers (dev, preview, `launch.json`);
 - edits outside the ticket's Touches (sync / codegen skills that fire on their own);
 - runs its own review or sub-steps my orchestrator already does.

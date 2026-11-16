@@ -1,6 +1,6 @@
 ---
 name: deslop
-description: Simplify the current branch's changes without changing their behaviour — inline trivial helpers, drop speculative and defensive code; significant removals are proposed one at a time; then teach and commit.
+description: Simplify the current branch's changes without changing their behaviour — inline trivial helpers, drop speculative and defensive code; significant removals are proposed one at a time; then commit.
 argument-hint: "optional: paths to narrow the scope"
 disable-model-invocation: true
 model: sonnet
@@ -67,4 +67,4 @@ Re-read the final diff (`git diff`) for leftover complexity, duplication, indire
 - the proposals you declined to make, or the user declined;
 - the checks run and their results; anything noticed outside the scope.
 
-Leave the changes uncommitted. Then run the teach round from `~/.agents/skills/_shared/TEACH.md` on this diff, then commit by loading and following `~/.agents/skills/commit/SKILL.md` (user-invoked — read the file, don't call the Skill tool). Deslop never commits without the teach round.
+Leave the changes uncommitted. Then commit by loading and following `~/.agents/skills/commit/SKILL.md` (user-invoked — read the file, don't call the Skill tool).

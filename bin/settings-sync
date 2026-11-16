@@ -5,7 +5,10 @@
 #   settings-sync          merge, print the diffs live → merged and repo → merged; write the merged JSON
 #                          to the repo file when it differs; when live differs, write /tmp/settings.merged.json
 #                          and print the apply command
-#   settings-sync --check  print the diffs only, write nothing; exit 1 when live or repo differs from merged
+#   settings-sync --check  print the diffs only, write nothing; exit 1 when live or repo differs from merged,
+#                          or an agent/skill isn't installed
+#   both also list every ~/.agents/agents/*.md and ~/.agents/skills/*/ (not _shared) missing from
+#   ~/.claude/agents / ~/.claude/skills, with the ln -s command for each (never run here)
 #
 # Merge: jq -s '.[1] * .[0]' <repo> <live> — a deep merge of objects where the repo value wins and
 # keys that exist only in the live file (written by /config, e.g. agentPushNotifEnabled) are kept.
@@ -48,8 +51,25 @@ echo "== repo → merged (what the repo file is missing)"
 repo_same=1
 diff <(jq -S . "$REPO") <(printf '%s\n' "$merged" | jq -S .) && echo "settings-sync: repo and merged are identical" || repo_same=0
 
+# Install: every ~/.agents/agents/*.md and ~/.agents/skills/*/ (not _shared) must be reachable from
+# ~/.claude/agents / ~/.claude/skills (a link per entry, or the whole dir linked). Missing → its ln -s line.
+echo "== install (agents and skills reachable from ~/.claude)"
+links_ok=1
+for f in "$HOME"/.agents/agents/*.md; do
+  [ -e "$f" ] || continue
+  dst="$HOME/.claude/agents/${f##*/}"
+  [ -e "$dst" ] || { echo "missing: $dst"; echo "  mkdir -p \"$HOME/.claude/agents\" && ln -s \"$f\" \"$dst\""; links_ok=0; }
+done
+for d in "$HOME"/.agents/skills/*/; do
+  d=${d%/}; [ "${d##*/}" = _shared ] && continue
+  [ -f "$d/SKILL.md" ] || continue
+  dst="$HOME/.claude/skills/${d##*/}"
+  [ -e "$dst" ] || { echo "missing: $dst"; echo "  mkdir -p \"$HOME/.claude/skills\" && ln -s \"$d\" \"$dst\""; links_ok=0; }
+done
+[ "$links_ok" = 1 ] && echo "settings-sync: every agent and skill is installed"
+
 if [ -n "$check" ]; then
-  [ "$live_same" = 1 ] && [ "$repo_same" = 1 ] && exit 0 || exit 1
+  [ "$live_same" = 1 ] && [ "$repo_same" = 1 ] && [ "$links_ok" = 1 ] && exit 0 || exit 1
 fi
 
 if [ "$repo_same" = 0 ]; then

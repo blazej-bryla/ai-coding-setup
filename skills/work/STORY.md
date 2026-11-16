@@ -1,6 +1,6 @@
 # Story mode — the single place its rules live
 
-`context.md` frontmatter `mode: story` (or `/work mode:story`). Missing `mode:` = `local` = today's flow, untouched: squash into the task branch, no Linear calls, no push. Everything in /work before landing — wave planning, spawn, review, verify, teach — is shared; this file says only what story mode does differently. Goal: no PR anyone reviews is huge. Stacks are a tool for that, not a goal.
+`context.md` frontmatter `mode: story` (or `/work mode:story`). Missing `mode:` = `local` = today's flow, untouched: squash into the task branch, no Linear calls, one push at the end (step 5). Everything in /work before landing — wave planning, spawn, review, verify, dependencies — is shared; this file says only what story mode does differently. Goal: no PR anyone reviews is huge. Stacks are a tool for that, not a goal.
 
 ## 1. When it applies
 
@@ -8,7 +8,7 @@
 
 ## 2. Branches and topology
 
-- **Story branch** = `branch:` in context.md (the story issue's `branchName`) — one branch in the monorepo, for the tickets of both sides. **Story base** = `base:` in context.md: the configured base branch (`WT_BASE_BRANCH`), or the epic's branch when the story has an epic parent — the configured `WT_EPIC_BRANCH` pattern with `{KEY}` = the epic's issue key, when set and that branch exists on origin, else the epic's `branchName`; neither on origin → ask, never create it. `wt` creates the story branch from `origin/<base>` (the hook); `/work` pushes it once at the start when origin lacks it (`git push --quiet -u origin <branch> 2>&1 | tail -20`) (the push goes through the user's `ask`); already on origin → fetch only. The orchestrator session runs in the story branch's worktree (`wt <story branch> [--base <epic>] /work`).
+- **Story branch** = `branch:` in context.md (the story issue's `branchName`) — one branch in the monorepo, for the tickets of both sides. **Story base** = `base:` in context.md: the configured base branch (`WT_BASE_BRANCH`), or the epic's branch when the story has an epic parent — the configured `WT_EPIC_BRANCH` pattern with `{KEY}` = the epic's issue key, when set and that branch exists on origin, else the epic's `branchName`; neither on origin → ask, never create it. `wt` creates the story branch from `origin/<base>` (the hook); `/work` pushes it once at the start when origin lacks it (`git push --quiet -u origin <branch> 2>&1 | tail -20`); already on origin → fetch only. The orchestrator session runs in the story branch's worktree (`wt <story branch> [--base <epic>] /work`).
 - **Linearised edges** (cut by /kickoff): every ticket has at most ONE blocker, of either side — FE and BE tickets live in one repo, so a FE ticket may stack on a BE ticket's branch and one chain may hold both. A ticket T with several → keep B = the deepest of them (most ancestors; tie → the higher number, then `be` before `fe`); for each other blocker X that is not already an ancestor of B, take A = the highest ancestor of B (B included) that is not also an ancestor of X, and re-point A's single blocker to X; repeat until every blocker of T is B or an ancestor of B, then T keeps only B. No new work is invented: only the order is serialised, and every original dependency still holds transitively.
 - **Base per ticket** (`**Base:**` in the ticket file): no blocker → `story` (sibling: its own PR on the story branch, no stack); one blocker → that ticket's id, `<side>/<NN>` (a bare `NN` = same side, as older tickets write it) (stacked: base = the blocker's `**Branch:**`).
 - **Chains** = maximal paths along `Base: <id>` edges, across sides. At a fork (01→02 and 01→03→04) the lowest-numbered child continues the chain; each other child starts its own chain whose bottom base is the parent's branch. `gh stack link` only for chains of length ≥2; a lone ticket (sibling or fork child without children) is a plain PR.
@@ -32,7 +32,7 @@ Resume, per ticket, on every /work start (before planning the wave):
 |---|---|
 | not done, `Branch` absent locally | frontier as usual → spawn |
 | not done, `Branch` exists with commits beyond `Base tip` | worker's wip survived — inspect, respawn on it or land it |
-| done, `PR: —` | landing step 3 (push + PR question) |
+| done, `PR: —` | landing step 3 (push + PR) |
 | `PR:` set | `gh pr view <url> --json state,reviewDecision,baseRefName` → write `PR status`; then §7 restack |
 
 ## 4. Spawn — two extra lines in the worker's prompt
@@ -41,12 +41,12 @@ Write `**Base tip:** $(git rev-parse <base ref>)` into the ticket file first (ba
 
 ## 5. Landing — replaces /work step 4.5 "Merge and commit"
 
-Review, verify (ui shots: see below), teach — unchanged. Then:
+Review, verify (ui shots: see below), dependencies — unchanged. Then:
 
 1. **Commit on the ticket branch, in the worker's worktree** — `git -C <wt> reset --soft <Base tip>` (folds the wip commits), then load and follow `~/.agents/skills/commit/SKILL.md` with every git command as `git -C <wt>`; staged = exactly the ticket's paths. One clean commit, no `wip:`. No squash into the story branch — the story branch only ever receives merged PRs. Set the ticket's status done and tick its criteria.
-2. **UI verification** needs the ticket's code under the user's dev server, which runs in the orchestrator's worktree: `git checkout --detach <Base tip>` there → `<side>-<NN>-before.png`; `git checkout --detach <Branch>` → the step-4.3 batch → `<side>-<NN>-after.png`; then `git switch <story branch>`. The orchestrator's tree must be clean; never leave it detached.
-3. **ONE AskUserQuestion: "push + open PR?"** (default yes). Yes → `git -C <wt> push --quiet -u origin <Branch> 2>&1 | tail -20` (the user's `ask` on git push applies), then `/pr ticket <side>/<NN>` (`~/.agents/skills/pr/SKILL.md`, read the file) — it picks the base, the `Depends on` line and the screenshots; write `PR`/`PR status` right after. No → leave `PR: —`; the next /work offers it again.
-4. **Stack link** — the ticket's chain has ≥2 tickets AND every branch of that chain is pushed with an open PR → `gh stack link --base <chain bottom base> <branch> <branch> …` (bottom to top). `link` pushes branches by itself through the GitHub API, past the user's `ask` on git push — so it runs only when nothing is left to push. No `--open`.
+2. **UI verification** needs the ticket's code under this worktree's dev server (`wtsrv`, `/work` step 4.3), which runs in the orchestrator's worktree: `git checkout --detach <Base tip>` there → `<side>-<NN>-before.png`; `git checkout --detach <Branch>` → the step-4.3 batch → `<side>-<NN>-after.png`; then `git switch <story branch>`. The orchestrator's tree must be clean; never leave it detached.
+3. **Push + open PR, without asking:** `git -C <wt> push --quiet -u origin <Branch> 2>&1 | tail -20`, then `/pr ticket <side>/<NN>` (`~/.agents/skills/pr/SKILL.md`, read the file) — it picks the base, the `Depends on` line and the screenshots; write `PR`/`PR status` right after. A push stopped by bash-guard or failing → leave `PR: —`, say why in one line; the next /work tries again.
+4. **Stack link** — the ticket's chain has ≥2 tickets AND every branch of that chain is pushed with an open PR → `gh stack link --base <chain bottom base> <branch> <branch> …` (bottom to top). `link` pushes branches by itself through the GitHub API, past bash-guard — so it runs only when nothing is left to push. No `--open`.
 5. **Close** — `git worktree remove <wt>` and delete the `wip/…` branch only once the PR is open (otherwise keep the worktree for the resume); the ticket branch stays.
 
 Never edit Linear statuses, descriptions or labels from here — the tracker's GitHub integration (if enabled) moves the sub-issue when its PR opens.
@@ -63,7 +63,7 @@ Every ticket PR opens ready for review, never `--draft`. A PR higher in a chain 
 
 ## 8. Cross-side edges
 
-Inside a task a cross-side edge (`be/02`) is an ordinary blocker and may be a stack base (§2). A FE ticket that needs BE behaviour verifies against this worktree's BE (`wts <slug> be`, then `wts <slug> fe` picks it up).
+Inside a task a cross-side edge (`be/02`) is an ordinary blocker and may be a stack base (§2). A FE ticket that needs BE behaviour verifies against this worktree's BE (`wtsrv up <slug> be`, then `wtsrv up <slug> fe --local`).
 
 ## 9. The story PR
 

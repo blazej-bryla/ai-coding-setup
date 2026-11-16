@@ -1,6 +1,6 @@
 ---
 name: bugfix
-description: Resolve a bug from a Linear issue — quick path for obvious local bugs, full investigation (root cause here, fix coded by a sonnet subagent) otherwise; then review, teach, commit.
+description: Resolve a bug from a Linear issue — quick path for obvious local bugs, full investigation (root cause here, fix coded by a sonnet subagent) otherwise; then review, commit.
 argument-hint: "<Linear bug link> + optional repro notes; 'quick'/'full' forces a path"
 disable-model-invocation: true
 model: opus[1m]
@@ -15,7 +15,7 @@ Drive a bug from Linear link to verified fix. Triage first: an obvious, local bu
 
 **Cold reader** — every question or gate message to the user follows the Cold reader rule in `~/.agents/skills/_shared/CONTEXT.md` (one or two lines of state — task, ticket, what happened since their last message — then the question; the reply is as big as the question).
 
-**Context budget** — read `~/.agents/skills/_shared/CONTEXT.md` once and apply it throughout: tests through `quiet`, the browser check through `abcheck`, the worker's hand-back capped at 40 lines (full report on disk), diffs as `--stat` unless a finding or the teach brief points at a file, code read with Read (offset/limit) — wider "how does X work" questions go to `wf-explore`.
+**Context budget** — read `~/.agents/skills/_shared/CONTEXT.md` once and apply it throughout: tests through `quiet`, the browser check through `abcheck`, the worker's hand-back capped at 40 lines (full report on disk), diffs as `--stat` unless a finding or a decision points at a file, code read with Read (offset/limit) — wider "how does X work" questions go to `wf-explore`.
 
 Context is pulled lazily: start from the bug alone; the story, siblings, and `~/.agents/scratch/` history are fetched only when the investigation actually needs the map. Keep hypotheses, decisions, and user interaction here — subagents cannot talk to the user.
 
@@ -31,7 +31,9 @@ Derive the slug with the task-key rule (first match of `[a-z]+-[0-9]+(-[0-9]+)?`
 
 **Where to test it.** If the bug is user-facing and neither the issue text nor its comments contain a URL or route to reproduce it on, ask the user once (AskUserQuestion; the answer comes as free text through "Other"): the app route/URL to test on, and what should be visible once it's fixed. Record the answer in `bug.md` as `**Verify by:** ui <route> — <expectation>` — or `cmd <command>` / `test <path>` when the user gives a command instead. A route found in the issue is recorded the same way, without asking.
 
-**Browser check** (used below for a `Verify by: ui` line): on THIS worktree's dev server (**FE AFTER_URL** = `FE_URL` from `~/.agents/bin/wtconf --ports` (`wts` writes it on start, removes it on exit; ports come from `wtconf --ports`, never from reading `.env*`); no `FE_URL` → no FE runs in this worktree. BE AFTER_URL = `http://localhost:<BE_PORT>` from the same command. **Servers are the user's.** Never start a dev server yourself (whatever the project's dev command is — `~/.agents/bin/wtconf WT_FE_DEV_CMD WT_BE_DEV_CMD`), never kill anything, and never pick another port. If nothing answers, or `wtwho` shows port R (`REMOTE_FE_PORT`) held by another worktree, tell the user in one line — "port R is held by <slug> — run `wts <slug> fe --take` when you can" (or "run `wts <slug> fe`" when it is free) — and wait (AskUserQuestion).), exactly as `/work` step 4.3 does — ONE batch in this task's session through the compact checker: `~/.agents/bin/abcheck <slug> <AFTER_URL><route> '<expectation>' <WT>/.shots/fix-<before|after>.png` (`<WT>` = this worktree's root, absolute; the agent-browser commands it runs are in `_shared/CONTEXT.md`, Browser — never `agent-browser --help`). It prints PASS/FAIL per check (expectation, console errors, page errors, failed requests), `page:`, `text:` when the expectation is missing, `shot:`, `verdict:`; don't Read the screenshot unless a check failed or the user asks. Login screen (`login form: yes`, or `page:`/`text:` show what `~/.agents/bin/wtconf -v WT_LOGIN_SCREEN_HINT` describes) → never type credentials: `close` the session, ask the user to run `ablogin`, wait (AskUserQuestion), run the batch again. Check done → `agent-browser --session <slug> close`, never `close --all`. Before the fix the expectation is expected to be missing: that is the reproduction; record what is shown instead (the `page:`/`text:` lines).
+**Browser check** (used below for a `Verify by: ui` line): on THIS worktree's dev server (**FE AFTER_URL** = `FE_URL` from `~/.agents/bin/wtconf --ports` (`wts` writes it on start, removes it on exit; ports come from `wtconf --ports`, never from reading `.env*`); no `FE_URL` → no FE runs in this worktree. BE AFTER_URL = `http://localhost:<BE_PORT>` from the same command. **Servers** — this session starts and stops this task's servers, only with `~/.agents/bin/wtsrv` (never a dev command directly, never `kill`; subagents never touch servers). Mode from the bug's `side:`: `fe` → `wtsrv up <slug> fe --remote`; `be` or `fe+be` → `wtsrv up <slug> be`, then `wtsrv up <slug> fe --local`. The FE always runs on port R (`REMOTE_FE_PORT`), one task at a time: `wtsrv up … fe` waits in a FIFO queue for R — run it in the foreground (this session has nothing else to land). `ready: <url>` → that URL is the FE AFTER_URL; `queued:` (exit 3, timeout) → say it in one line and run it again; `failed:` (exit 1) → read the printed log tail; the fix's code → back to the fix loop, otherwise tell the user in one line with the log path. `wtsrv down <slug>` after each batch of shots — after the before shot, and again after the after shot — so R goes to the next task; never hold R across the diagnosis checkpoint or while waiting for the user.), exactly as `/work` step 4.3 does — ONE batch in this task's session through the compact checker: `~/.agents/bin/abcheck <slug> <AFTER_URL><route> '<expectation>' <WT>/.shots/fix-<before|after>.png` (`<WT>` = this worktree's root, absolute; the agent-browser commands it runs are in `_shared/CONTEXT.md`, Browser — never `agent-browser --help`). It prints PASS/FAIL per check (expectation, console errors, page errors, failed requests), `page:`, `text:` when the expectation is missing, `shot:`, `verdict:`; don't Read the screenshot unless a check failed or the user asks. Login screen (`login form: yes`, or `page:`/`text:` show what `~/.agents/bin/wtconf -v WT_LOGIN_SCREEN_HINT` describes) → never type credentials: `close` the session, ask the user to run `ablogin`, wait (AskUserQuestion), run the batch again. Check done → `agent-browser --session <slug> close`, never `close --all`. Before the fix the expectation is expected to be missing: that is the reproduction; record what is shown instead (the `page:`/`text:` lines).
+
+**Checks only the user can judge** (visual match with a design or Figma frame, wording or layout taste, anything the browser check can't decide) never block the fix and are never asked (no AskUserQuestion for a judgement call). Record them in `bug.md` as `not proven — needs your eye` with: route or screen, what to click, what to expect, and the design reference if any — likewise when the user answered "later" / "I'll check" (never ask again in this run). `/pr` puts them in the review guide (`unproven`) and the PR's test steps.
 
 ## 2. Resume check
 
@@ -39,7 +41,7 @@ Derive the slug with the task-key rule (first match of `[a-z]+-[0-9]+(-[0-9]+)?`
 
 | Stage found | Action |
 |---|---|
-| `implemented` | Re-verify (step 7 for `path: full`, quick-path step 4 otherwise), then continue with review → teach → commit (steps 8–10) if not yet committed |
+| `implemented` | Re-verify (step 7 for `path: full`, quick-path step 4 otherwise), then continue with review → commit (steps 8–9) if not yet committed |
 | `diagnosed` | `path: full` → skip to step 6; `path: quick` → implement (quick path step 3) |
 | `investigating` | Continue step 3/4 with the notes so far |
 | no `bug.md` | Start step 3 fresh |
@@ -56,7 +58,7 @@ Read the code the symptom points at (Grep/Read here — no subagents yet). Treat
 2. Checkpoint (AskUserQuestion): one-paragraph diagnosis + proposed fix + blast radius → implement / adjust / stop. The diagnosis follows step 4's root-cause rule (strongest alternative, the check that tells them apart). Still zero fix code before this point.
 3. Implement directly in the main conversation — no `fix-plan.md`, no sonnet subagent (writing the plan would cost more than the fix). Keep `bug.md` minimal: symptom, root cause, fix, `path: quick`, `stage:` updated as you go.
 4. Verify: the reproduction from 1 now behaves correctly; run the tests relevant to the touched files (`~/.agents/bin/quiet "<side's test command> <file>"`); with a `Verify by: ui` line, also the browser check (step 1) → `fix-after.png` — expectation missing, console error or failed request means not fixed. Set `stage: implemented`; log friction as in step 7.
-5. Jump to step 8 (review — the risk-based selection there normally picks `light.md` for a small diff), then teach and commit.
+5. Jump to step 8 (review — the risk-based selection there normally picks `light.md` for a small diff), then commit.
 
 Escalate to the full path the moment the bug turns out deeper than it looked — pull the story context (step 4) before continuing, and note the escalation in `bug.md`.
 
@@ -86,7 +88,7 @@ Spawn ONE `wf-implementer` subagent (`~/.claude/agents/wf-implementer.md`: sonne
 
 ## 7. Verify on the main model
 
-The fix arrives on the worker's branch. Inspect `git diff <this-branch>...<worker-branch> --stat` and the hand-back (the full `reports/fix.md` only when `status` is `blocked` or `partial`, or `open`, `deps:` or `deviation:` is not `none`), then its `acceptance:` / `easy-to-miss:` lines — for each item not `proven` / `followed`, decide: check it yourself, send it back (the one repair), or ask the user with the reason; everything proven moves on — then the full diff of the files the fix plan names (`git diff <this-branch>...<worker-branch> -- <path>…`) — a path in `--stat` the plan doesn't name is a deviation: read its diff and the report too; run the reproduction and the relevant suite in the worker's worktree (`~/.agents/bin/quiet -C <worker worktree> "<test command> [<file>]"`), then `git merge --squash <worker-branch>` here; review (step 8) and teach (step 9) run on the staged result, and step 10 commits it. Remove the worker's worktree and branch after the commit.
+The fix arrives on the worker's branch. Inspect `git diff <this-branch>...<worker-branch> --stat` and the hand-back (the full `reports/fix.md` only when `status` is `blocked` or `partial`, or `open`, `deps:` or `deviation:` is not `none`), then its `acceptance:` / `easy-to-miss:` lines — for each item not `proven` / `followed`, decide: check it yourself, send it back (the one repair), or ask the user with the reason (never for a `needs your eye` item — record it, see Checks only the user can judge); everything proven moves on — then the full diff of the files the fix plan names (`git diff <this-branch>...<worker-branch> -- <path>…`) — a path in `--stat` the plan doesn't name is a deviation: read its diff and the report too; run the reproduction and the relevant suite in the worker's worktree (`~/.agents/bin/quiet -C <worker worktree> "<test command> [<file>]"`), then `git merge --squash <worker-branch>` here; review (step 8) runs on the staged result, and step 9 commits it. Remove the worker's worktree and branch after the commit.
 
 Review the subagent's diff critically — correctness, side effects, whether it actually matches the plan. Re-run the reproduction from step 4: the failing case must now pass, and the relevant test suite must be green. With a `Verify by: ui` line, after the squash-merge run the browser check (step 1) on this worktree's server → `fix-after.png`; expectation missing, console error or failed request sends it back like a red test. Fix small issues directly; send substantial rework back to a fresh `sonnet` subagent with a corrected plan — the plan states problems as observed with their evidence, a cause only when verified (`_shared/CONTEXT.md`, Causes).
 
@@ -100,14 +102,10 @@ Per the `review` slot: `project` → follow its `file=` on the fix's diff with i
 
 **Repair cap** (either path) — one repair and one re-review per fix: after the repair, run the reviewer pass once more with the previous `findings.md` as `Previous findings:` in the context block. A second blocking result — a blocking finding that holds, the reproduction still failing, a red suite, a failed browser check, or a `broken` Easy-to-miss — ends the loop: set nothing to `implemented`, tell the user what remains, what it cost (repairs run, rough minutes), and ask (AskUserQuestion) — fix by hand / one more repair / stop. Never a third repair on your own.
 
-## 9. Teach — before the commit
-
-Same adaptive mechanism as `~/.agents/skills/_shared/TEACH.md`, scaled to the diff: 1–2 questions for a quick-path fix, 2–4 otherwise, each with a "Skip teach — commit now" escape; levels 1→3, each wrong answer simplifies the explanation. For a bugfix the questions that matter are: why did the bug arise, why does this fix close the actual mechanism (not just the symptom), and what side effects the change could have.
-
-## 10. Commit
+## 9. Commit
 
 Commit by loading and following `~/.agents/skills/commit/SKILL.md` (user-invoked — read the file, don't call the Skill tool), scoped to the fix's paths including any new tests. Terse message, no attribution — that skill handles it.
 
-## 11. Wrap up
+## 10. Wrap up
 
 Report: root cause in one paragraph (verified — say how; anything unverified labeled a guess), what changed and where, test evidence, the commit hash, and the workdir path. Leave push / PR / Linear updates to the user's normal flow. If the conversation gets heavy mid-investigation, tell the user to `/clear`, then re-run `/bugfix <same link>` — step 2 resumes from `bug.md`.

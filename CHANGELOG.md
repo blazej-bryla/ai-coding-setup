@@ -2,6 +2,86 @@
 
 Newest first.
 
+## v4.9.1 — 2026-11-16
+
+### Changed
+- refine: public text English-only; UI strings in `ui-en.json` / `ui-pl.json` (Polish kept private); `refine-html` checks locale keys; test added (`tests/refine-html.test.sh`).
+
+## v4.9.0 — 2026-11-16
+
+### Added
+- `/kickoff refine`: questions for refinement meetings (several issues per run, known-from-code facts, answers in three states, bilingual interactive page via `refine-html`).
+
+## v4.8.3 — 2026-11-16
+
+### Changed
+- Checks only a human can judge (visual match with a design or Figma frame, wording or layout taste) never block `/work` or `/bugfix` and are never asked mid-run: the criterion is marked `not proven — needs your eye` with route, action, expectation and design reference, and goes to the review guide (`unproven`, listed first) and to the PR's test steps as a checkbox line. A "later" / "I'll check" answer is recorded the same way. No question before the push.
+- `wf-implementer` reports such criteria as an acceptance mark, not as an `open` question.
+
+### Added
+- `export-public --smoke`: exports into a fresh `mktemp -d` repo with a local placeholder identity, runs every check and the commit, never pushes or releases, prints `smoke: ok <path>` or the failing check. `--smoke` with `--push` or `--release` is a usage error.
+## v4.8.2 — 2026-11-13
+
+### Changed
+- Task sessions start in auto mode: `wt` launches Claude with `--permission-mode auto` instead of `acceptEdits`.
+
+## v4.8.1 — 2026-11-13
+
+### Fixed
+- `wt <branch> [--base <b>] <prompt>` (and so Herdr's Work button and `/kickoff`'s "Start /work now") now reaches Claude with its prompt: `--add-dir` takes several directories and swallowed the prompt; `wt` ends it with `--`. Affects manual `wt` too.
+- The linear mod builds every `wt` tab with one tested pure function (`herdr/mods/linear/wt-command.js`): no `--base` when the base is empty, branch / base / prompt quoted separately, a branch or base starting with `-` refused.
+### Changed
+- `/work` no longer asks before the first wave; waves proceed, and the user can say stop at any time.
+- `/work` (guide draft) and `/pr` step 4b skip the review guide in one line when the `wf-review-guide` agent isn't installed, instead of running it inline.
+- `settings-sync` and `settings-sync --check` list every agent and skill in the repo not linked into `~/.claude/agents` / `~/.claude/skills`, with the `ln -s` for each; `--check` exits 1 when one is missing. It still never writes `~/.claude`.
+- `/kickoff` step 6: the start-request sentence reads once (write `.tmp`, then `mv`).
+
+## v4.8.0 — 2026-11-13
+
+### Added
+- A local review guide per PR: one screen with an optional diagram and five short blocks — what changed, decisions taken without you, what isn't proven, what the checks don't catch, where to look first — each point naming its source, file points linking into the PR's diff. It lives only in the task's scratch directory, never in the repo or the PR.
+- `wf-review-guide` subagent: drafts the guide from the plan in the background while `/work` builds the first wave, then aligns it to the actual diff, reports and review findings when `/pr` runs.
+- `bin/guide-render`: renders the guide's JSON into a self-contained HTML page (fixed block order, at most 5 points of 140 characters each, everything escaped, no scripts or external resources, light and dark).
+### Changed
+- `/pr` (create and `update`, local, ticket and story) builds the guide after the PR opens and asks **Open the review guide** / **Skip** before the change summary.
+- `/address-review` reminds you that an existing guide predates the fixes and `/pr update` refreshes it.
+
+## v4.7.3 — 2026-11-13
+
+### Changed
+- `/work` ends without asking: it pushes the task branch, runs `/pr` (which opens the PR and drafts the change summary for your approval). Story mode pushes and opens each ticket's PR without asking, then runs `/pr story`. A push the guard holds for approval, or one that fails, stops there with the reason.
+- `/pr` pushes a branch missing on origin without asking first.
+- `/kickoff` names the temp file it writes the Herdr start request through.
+### Added
+- `bash-guard` checks every `git push`: a plain push to a task branch passes; force (`--force`, `-f`, `--force-with-lease`, `--force-if-includes`, `+refspec`), `--delete`, `:refspec`, `--all`, `--mirror`, `--tags`, `--prune`, and a push to a protected branch (the configured base and staging branches, the usual long-lived branches, the epic pattern) ask you first. Settings need an `allow` on `git push` for the plain case to run without a prompt.
+
+## v4.7.2 — 2026-11-13
+
+### Added
+- `/kickoff` ends by asking **Start /work now** / **Not now** (no default). Start leaves a one-shot request for the Herdr board, waits up to 10 s for it to be taken, and otherwise deletes it and repeats the `wt …` launch line.
+- Herdr: a task's card shows its place on the shared FE port — `:<port> · holds`, `:<port> · holds (you)` or `:<port> · waiting (n in queue)`.
+### Changed
+- Herdr: ■ Stop on a card stops a detached server with `wtsrv down`; servers running in a terminal still get Ctrl+C.
+- Herdr: Close task runs `wtsrv down <slug>` before stopping the task's terminal servers.
+
+## v4.7.1 — 2026-11-13
+
+### Added
+- `bin/wtsrv`: the agent starts and stops a task's dev servers itself — `wtsrv up <slug> fe [--remote|--local]`, `wtsrv up <slug> be`, `wtsrv down <slug> [fe|be]`, `wtsrv status [<slug>]`. Servers run detached in their own process group, logged under `scratch/<slug>/servers/`; one-line output (`ready:`, `queued:`, `failed:` with the log tail).
+- `hooks/lib/portlock.sh`: a FIFO lock on the shared FE port. The FE always runs on that port, one task at a time; a waiting agent gets it after the holder releases it and a short grace period (`WT_PORT_GRACE`, 15 s) in which the holder may come back.
+### Changed
+- `wts` (your terminal) claims the same lock without waiting; `--take` takes the port from an agent's server too. `wtrm` stops the task's servers first.
+- `/work`, `/bugfix` and `/pr` no longer ask you to start servers: they run `wtsrv`, release the port right after their screenshots and never hold it while waiting for you.
+- `bash-guard` points to `wtsrv` when an agent runs the dev command directly or kills a server process.
+
+## v4.7.0 — 2026-11-13
+
+### Removed
+- The teach round before every commit (`skills/_shared/TEACH.md` and the teach steps in `/work`, `/bugfix`, `/deslop` and `/address-review`).
+### Changed
+- `/work` step 4.4 is now the dependency check: a changed `package.json` or lockfile is shown to you with keep / revert / stop.
+- The browser runs headless by default; only `ablogin` opens a window (`--headed`).
+
 ## v4.6.2 — 2026-11-13
 
 - README and WORKFLOW made consistent; history moved here; fixed public title.

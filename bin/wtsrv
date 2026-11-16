@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# wtsrv — the agent's only way to start and stop a task's dev servers (v4.7.1). Servers run detached, each in
+# its own process group, through `wts` (WTSRV=1); the FE always runs on port R (WT_REMOTE_FE_PORT), one task at a
+# time, behind a FIFO lock (hooks/lib/portlock.sh). BE ports are per worktree, no lock. Humans use `wts`, which
+# respects the same lock.
+#
+#   wtsrv up <slug> fe [--remote|--local] [--timeout S]   wait for R (default 1800 s), start, wait until it answers
+#   wtsrv up <slug> be                                    start this worktree's BE, wait until it answers
+#   wtsrv down <slug> [fe|be]                             stop (no side = both); fe releases R
+#   wtsrv status [<slug>]                                 the lock on R, then this slug's sides
+#
+# Output, one line: `ready: <side> <url> (<mode>)` (exit 0) | `queued: <pos> behind <holder>` (exit 3) |
+# `failed: <side> — last 30 lines of <log>` + those lines (exit 1) | `down: <side>` | `not running: <side>`.
+# Logs: ~/.agents/scratch/<slug>/servers/<side>.log; pidfiles: <worktree>/.shots/.<side>.pgid ("<pgid> <mode>").
+A=$(cd "$(dirname "$0")/.." && pwd)
+WF_USE_DEFAULT_PROFILE=1   # like shell/worktrees.zsh: outside a profiled repo, $WF_DEFAULT_PROFILE
+. "$A/hooks/lib/config.sh"
+unset WF_USE_DEFAULT_PROFILE
+PL_PORT=$WT_REMOTE_FE_PORT
+. "$A/hooks/lib/portlock.sh"
+R=$PL_PORT
+
+usage() { echo "usage: wtsrv up <slug> fe [--remote|--local] [--timeout S] | up <slug> be | down <slug> [fe|be] | status [<slug>]" >&2; exit 2; }
+slugof() { local k; k=$(printf %s "$1" | grep -oiE '[a-z]+-[0-9]+(-[0-9]+)?' | head -1 | tr A-Z a-z); [ -n "$k" ] && printf %s "$k" || printf %s "${1#*/}"; }
+
+alive() { [ -n "$1" ] && kill -0 -- "-$1" 2>/dev/null; }
+pidf() { printf %s "$WT/.shots/.$1.pgid"; }
+pgid_of() { local f; f=$(pidf "$1"); [ -s "$f" ] && awk '{print $1; exit}' "$f"; }
+mode_of() { local f; f=$(pidf "$1"); [ -s "$f" ] && awk '{print $2; exit}' "$f"; }
+running() { alive "$(pgid_of "$1")"; }
+url_of() { if [ "$1" = fe ]; then echo "http://localhost:$R"; else cat "$WT/.shots/.be-url" 2>/dev/null; fi; }
+logf() { printf %s "$HOME/.agents/scratch/$SLUG/servers/$1.log"; }
+
+ready_line() { local m; m=$(mode_of "$1"); echo "ready: $1 $(url_of "$1")${m:+ ($m)}"; }
+
+# stop one side's process group — only a group we started (leader runs `wts`, or the leader is gone and only
+# its group is left: a live pgid can't be reused)
+stop_side() {  # <side> → 0 stopped, 1 nothing ran
+  local side=$1 pg cmd n=0
+  pg=$(pgid_of "$side")
+  if alive "$pg"; then
+    cmd=$(ps -o command= -p "$pg" 2>/dev/null)
+    if [ -n "$cmd" ] && ! printf %s "$cmd" | grep -q 'wts'; then
+      echo "wtsrv: pgid $pg isn't a wts server ($(printf %s "$cmd" | cut -c1-60)) — left alone" >&2; rm -f "$(pidf "$side")"; return 1
+    fi
+    kill -TERM -- "-$pg" 2>/dev/null
+    while alive "$pg" && [ $n -lt 20 ]; do sleep 0.5; n=$((n + 1)); done
+    alive "$pg" && kill -KILL -- "-$pg" 2>/dev/null
+    rm -f "$(pidf "$side")" "$WT/.shots/.$side-url"
+    return 0
+  fi
+  rm -f "$(pidf "$side")"
+  return 1
+}
+
+fail() {  # <side> <reason>
+  local side=$1 log; log=$(logf "$side")
+  stop_side "$side" >/dev/null 2>&1
+  [ "$side" = fe ] && pl_release "$SLUG" >/dev/null 2>&1
+  echo "failed: $side — $2; last 30 lines of $log"
+  tail -n 30 "$log" 2>/dev/null
+  exit 1
+}
+
+up() {  # <side> <mode> <timeout>
+  local side=$1 mode=$2 timeout=$3 log pg url n=0 max=${WT_SRV_READY:-240} rc
+  if running "$side"; then ready_line "$side"; exit 0; fi
+  rm -f "$(pidf "$side")"
+  if [ "$side" = fe ]; then
+    out=$(pl_acquire "$SLUG" "$timeout"); rc=$?
+    [ $rc -eq 0 ] || { [ -n "$out" ] && echo "$out"; exit "$rc"; }
+  else
+    rm -f "$WT/.shots/.be-url"
+  fi
+  log=$(logf "$side"); mkdir -p "$(dirname "$log")" "$WT/.shots"
+  local args=("$SLUG" "$side"); [ "$side" = fe ] && args+=("--$mode" --port "$R")
+  ( cd "$WT" && exec perl -e 'setpgrp(0,0); exec @ARGV' zsh -c "source '$A/shell/worktrees.zsh' && WTSRV=1 wts \"\$@\"" wts "${args[@]}" \
+      </dev/null >"$log" 2>&1 ) &
+  pg=$!
+  echo "$pg $mode" > "$(pidf "$side")"
+  [ "$side" = fe ] && pl_set_pgid "$SLUG" "$pg"
+  while :; do
+    url=$(url_of "$side")
+    [ -n "$url" ] && curl -s -o /dev/null --max-time 5 "$url" && break
+    alive "$pg" || fail "$side" "exited"
+    [ $n -ge "$max" ] && fail "$side" "not answering after ${max} s"
+    sleep 1; n=$((n + 1))
+  done
+  ready_line "$side"; exit 0
+}
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+  up)
+    [ $# -ge 2 ] || usage
+    SLUG=$(slugof "$1"); side=$2; shift 2
+    WT="$WT_ROOT/$SLUG"; [ -d "$WT" ] || { echo "wtsrv: no worktree $WT" >&2; exit 2; }
+    mode="" timeout=1800
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --remote) mode=remote ;; --local) mode=local ;;
+        --timeout) [ -n "${2:-}" ] || usage; timeout=$2; shift ;;
+        *) usage ;;
+      esac; shift
+    done
+    case "$timeout" in ''|*[!0-9]*) usage ;; esac
+    case "$side" in
+      fe) [ -n "$mode" ] || { running be && mode=local || mode=remote; }; up fe "$mode" "$timeout" ;;
+      be) [ -z "$mode" ] || usage; up be "" 0 ;;
+      *) usage ;;
+    esac ;;
+  down)
+    [ $# -ge 1 ] && [ $# -le 2 ] || usage
+    SLUG=$(slugof "$1"); WT="$WT_ROOT/$SLUG"
+    case "${2:-}" in fe) sides="fe" ;; be) sides="be" ;; '') sides="fe be" ;; *) usage ;; esac
+    for s in $sides; do
+      if stop_side "$s"; then echo "down: $s"; else echo "not running: $s"; fi
+      [ "$s" = fe ] && pl_release "$SLUG" >/dev/null 2>&1
+    done
+    exit 0 ;;
+  status)
+    [ $# -le 1 ] || usage
+    pl_status
+    if [ $# -eq 1 ]; then
+      SLUG=$(slugof "$1"); WT="$WT_ROOT/$SLUG"
+      line=""; for s in fe be; do running "$s" && st=running || st=stopped; line="$line${line:+ · }$s: $st"; done
+      echo "$SLUG — $line"
+    fi
+    exit 0 ;;
+  *) usage ;;
+esac

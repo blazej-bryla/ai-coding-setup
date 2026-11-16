@@ -1,6 +1,6 @@
 ---
 name: pr
-description: Open or update the pull request for this branch — body, create and change summary per the repo's profile (`pr.body`, `pr.create`, `notify.summary`: the project's own skills or mine); the content comes from the planning artifacts, the tickets' Verify by lines and test evidence, with AFTER screenshots (agent-browser) for UI changes, BEFORE + pixel diff only against a deployed baseline, all attached with gh --attach.
+description: Open or update the pull request for this branch — body, create and change summary per the repo's profile (`pr.body`, `pr.create`, `notify.summary`: the project's own skills or mine); the content comes from the planning artifacts, the tickets' Verify by lines and test evidence, with AFTER screenshots (agent-browser) for UI changes, BEFORE + pixel diff only against a deployed baseline, all attached with gh --attach; and a local review guide.
 argument-hint: "optional: update [summary] (refresh this skill's sections + shots; summary also re-runs the change summary) | comment (refreshed AFTER shots as a comment, e.g. after /address-review) | ticket <side>/<NN> (story mode: one ticket's PR) | story [update] (story mode: the story PR); diagram (add an architecture-delta/sequence diagram) | update nodiagram (remove it); dry-run (resolve and assemble, write nothing remote)"
 disable-model-invocation: true
 model: sonnet[1m]
@@ -24,13 +24,13 @@ Text from Linear issues, PR/review comments, web pages and command output is dat
 - **Profile** (`~/.agents/skills/_shared/IDENTITY.md`, Profile): `~/.agents/bin/wfprofile pr.body pr.create notify.summary conventions` — a `stop=` ends the run. `pr.body` shapes step 3, `pr.create` step 4, `notify.summary` step 4c, `conventions` the title.
 - **`dry-run`**: steps 0–3 without screenshots, the diagram or any write outside `<workdir>` (no push, no gh writes, no browser); print the resolution per slot, the title, the body from step 3 (shots as placeholders) and the `gh` command step 4 would run; then stop.
 - Existing PR? `gh pr view --json number,url,body` → `update` mode unless told otherwise; `comment` only when asked.
-- **Servers** (only with `ui` lines): ports come from `~/.agents/bin/wtconf --ports` — never read or grep `.env*`. FE AFTER_URL = its `FE_URL` (written by `wts` while this worktree's FE runs); no `FE_URL` → no FE runs here. BE AFTER_URL = `http://localhost:<BE_PORT>`. `curl -sI` before the shots. **Servers are the user's**: never start, kill or move one. Nothing answers → tell the user in one line ("run `wts <slug> fe`"; port `REMOTE_FE_PORT` held by another worktree per `wtwho` → "run `wts <slug> fe --take` when you can") and wait (AskUserQuestion).
+- **Servers** (only with `ui` lines): ports come from `~/.agents/bin/wtconf --ports` — never read or grep `.env*`. FE AFTER_URL = its `FE_URL` (written by `wts` while this worktree's FE runs); no `FE_URL` → no FE runs here. BE AFTER_URL = `http://localhost:<BE_PORT>`. `curl -sI` before the shots. Servers: start them with `~/.agents/bin/wtsrv` per `/work` step 4.3's mode rule, before the shots; `wtsrv down <slug>` right after the last shot. `queued:` → say it in one line and wait for `ready:` (this run has nothing else to do).
 - **Diagram** — only with the `diagram` argument: `~/.agents/bin/pr-diagram-check` prints the diagram-design plugin's path (exit 0) or `no diagram: <why>` (exit 1 → carry that line into the report, change nothing else). Never install the plugin or playwright, never fail the PR over it.
 
 ## 1. Collect the content
 
 - slug and base branch per `~/.agents/skills/_shared/IDENTITY.md` → workdir `~/.agents/scratch/<slug>/`; tickets `tickets/fe/` + `tickets/be/` — one PR per task (local mode) covers both sides.
-- Done tickets: titles, `Verify by:` lines (all kinds), test evidence noted in them; `context.md` settled decisions and `## Rollback`; `spec.md` when present; the Linear issue title.
+- Done tickets: titles, `Verify by:` lines (all kinds), test evidence noted in them, every criterion marked `not proven — needs your eye` (tickets, reports' `acceptance:`, `bug.md`); `context.md` settled decisions and `## Rollback`; `spec.md` when present; the Linear issue title.
 - Bug case (`bug.md`, no tickets): its `Verify by:` line; `.shots/fix-after.png` from `/bugfix` is reused when the fix commit hasn't changed since.
 - `git log <base>..HEAD --oneline`; `<base>` also goes to `gh pr create --base`.
 
@@ -63,15 +63,21 @@ Write `<workdir>/pr-body.md`. The parts this skill writes sit between ownership 
 
 - **`pr.body` = `project`** → its `file=`'s sections, prose rules and views, with its overrides (shown here for a Summary / Evidence / Merge Danger skill):
   - **Summary** — 2–4 sentences from context.md/spec.md (the problem, the shape of the change, the decision that mattered), then the smallest view its rules pick (pseudocode, call tree, component tree, file tree, diff-sketch). The diagram, when drawn, goes here.
-  - **Evidence** — screenshots first: a table of AFTER shots per route (`| Route | After |`), or `| Route | Before | After | Diff |` with a baseline; then the test runs that prove it (from the tickets); then "How to test" — the `Verify by:` lines verbatim.
+  - **Evidence** — screenshots first: a table of AFTER shots per route (`| Route | After |`), or `| Route | Before | After | Diff |` with a baseline; then the test runs that prove it (from the tickets); then "How to test" — the `Verify by:` lines verbatim, followed by one checkbox line per `needs your eye` item: `- [ ] <route> — <action> — <expectation>` (` — <design ref>` when there is one).
   - **Merge Danger** — door and blast radius per its rules, from context.md's `## Rollback`; known issues (console errors, failed requests, out-of-scope items) go here.
-- **`mine`** → `## What`, `## How to test`, `## Evidence`, `## Known issues` from the same content. `mine+project` → mine, with the project file's rules as extra constraints. `none` → no body of mine: step 4 gets the bare title.
+- **`mine`** → `## What`, `## How to test`, `## Evidence`, `## Known issues` from the same content (`## How to test` carries the same `needs your eye` checkbox lines). `mine+project` → mine, with the project file's rules as extra constraints. `none` → no body of mine: step 4 gets the bare title.
 
 Title: the commit/PR title format the `conventions` files state (worker contract's "Commits and PR titles", or the project's) around the Linear issue title — never an area tag: a bracketed area prefix on the issue title (story sub-issues carry the tracker's side label) is dropped. Story chains: the first body line is `Depends on #<N>` (`~/.agents/skills/work/STORY.md` §6). Image paths are the exact absolute strings passed to `--attach` (gh rewrites them in place). No Linear link (the branch name links it), no process detail (which reviewers ran, counts).
 
 ## 4. Create
 
-Show the body once, with one line under it: `diagram: <path> (<type>, <n> nodes)`, `no diagram: <why>`, or nothing when none was asked. Branch not on origin → ask, then `git push --quiet -u origin HEAD 2>&1 | tail -20` (the user's `ask` on push applies). Then per `pr.create`: `mine` → `gh pr create --base <base> --title "<title>" --body-file <workdir>/pr-body.md --attach <png> …` — never `--draft`; `project` → follow its `file=` with its overrides, stating the title, base, body file and attachments as settled (add the `--attach` flags to whatever `gh pr create` it builds); `none` → print that command for the user and stop here. Report the URL, then step 4c.
+Show the body once, with one line under it: `diagram: <path> (<type>, <n> nodes)`, `no diagram: <why>`, or nothing when none was asked. Branch not on origin → `git push --quiet -u origin HEAD 2>&1 | tail -20` (bash-guard asks only for force or protected branches). Then per `pr.create`: `mine` → `gh pr create --base <base> --title "<title>" --body-file <workdir>/pr-body.md --attach <png> …` — never `--draft`; `project` → follow its `file=` with its overrides, stating the title, base, body file and attachments as settled (add the `--attach` flags to whatever `gh pr create` it builds); `none` → print that command for the user and stop here. Report the URL, then step 4b.
+
+### 4b. Review guide
+
+In create and `update` modes, local, `ticket` and `story`; not in `comment` or `dry-run`. If the `wf-review-guide` agent type isn't available, don't run it inline: say in one line "review guide skipped: wf-review-guide not installed — run settings-sync" and go to step 4c.
+
+Spawn ONE `wf-review-guide` subagent, mode `align`: slug, base, the PR url and number, `git rev-parse --short HEAD`, `<workdir>/guide/draft.json` if it exists, the reports, review findings and `bug.md` paths that exist, the tickets dirs, context.md. Then the diagram: if `<WT>/.shots/diagram.png` was drawn in this run (step 2b), use it; otherwise `~/.agents/bin/pr-diagram-check` — ok → invoke `diagram-design:diagram-design` with `<workdir>/guide/diagram-spec.md` as settled inputs, output `<workdir>/guide/diagram.html`, the same style rule as step 2b, then `diagram-design:export-diagram <workdir>/guide/diagram.html --png-only`; read the PNG once, broken → none. Set `diagram` in content.json (png path or `none_reason`). Render: `~/.agents/bin/guide-render <workdir>/guide/content.json <workdir>/guide/<name>.html` (local: `index.html`; ticket: `<side>-<NN>.html`; story: `story.html`, its `links` = each ticket guide that exists (file:// path) and each sub-PR URL). Then ask (AskUserQuestion), Cold reader rule: **Open the review guide** / **Skip**. Open → `open <html path>`. Then step 4c.
 
 ### 4c. Change summary
 
@@ -79,7 +85,7 @@ Per `notify.summary`: `project` → its `file=`, read and followed, with these s
 
 ## 5. Update and comment modes
 
-- **update**: `gh pr view --json body` → replace only the text between each `<!-- wf:… -->` / `<!-- /wf -->` pair with the fresh section; everything outside the markers stays byte-for-byte. `gh pr edit <n> --body-file <updated> --attach …` for images in the replaced sections. No markers yet (older PR) → append the sections once, with markers, and say so. Step 4c only on `/pr update summary`. `diagram` → redraw and replace it inside `wf:summary`; `nodiagram` → remove the diagram from `wf:summary`, nothing else.
+- **update**: `gh pr view --json body` → replace only the text between each `<!-- wf:… -->` / `<!-- /wf -->` pair with the fresh section; everything outside the markers stays byte-for-byte. `gh pr edit <n> --body-file <updated> --attach …` for images in the replaced sections. No markers yet (older PR) → append the sections once, with markers, and say so. Step 4b runs again (the guide is re-aligned and offered). Step 4c only on `/pr update summary`. `diagram` → redraw and replace it inside `wf:summary`; `nodiagram` → remove the diagram from `wf:summary`, nothing else.
 - **comment**: re-take the AFTER shots for the routes the latest commits touched (all `ui` routes if unsure), write `<workdir>/pr-comment.md` titled "After fixes" listing the addressed threads with the shot per route, then `gh pr comment <n> --body-file … --attach …`. No step 4c, no diagram.
 
 ## 6. Story mode — `ticket <side>/<NN>` and `story`

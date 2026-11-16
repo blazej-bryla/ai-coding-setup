@@ -1,6 +1,6 @@
 ---
 name: address-review
-description: Close the PR feedback loop — unresolved review threads worked one by one, then teach, commit, replies.
+description: Close the PR feedback loop — unresolved review threads worked one by one, then commit, replies.
 argument-hint: "optional: PR number/URL (defaults to the current branch's PR)"
 disable-model-invocation: true
 model: sonnet[1m]
@@ -46,22 +46,20 @@ For each thread show: reviewer, `file:line`, their ask, the relevant code. Then 
 
 **Repair cap** — per thread: one fix and one re-check (the tests of the touched files through `~/.agents/bin/quiet`, and the reviewer's ask read against the new code). A second failure on the same thread ends its loop: say what remains, what it cost (attempts, rough minutes), and ask (AskUserQuestion) — fix by hand / one more attempt / reply only. Never a third attempt on your own. State problems as observed, with evidence; name a cause only when verified, and label a guess as a guess.
 
-## 4. Teach — before the commit
-
-Same adaptive mechanism as `~/.agents/skills/_shared/TEACH.md`, scaled to the changes: 1–2 questions for trivial fixes, 2–4 otherwise — concrete, about what changed and why, one per addressed concern, each with a "Skip teach — commit now" escape; levels 1→3, each wrong answer simplifies the explanation. Frame it around the reviewers' concerns — after this round the user should be able to defend every fix in the PR discussion themselves.
-
-## 5. Commit and push
+## 4. Commit and push
 
 Commit by loading and following `~/.agents/skills/commit/SKILL.md` (user-invoked — read the file, don't call the Skill tool), scoped to the changed paths; split into separate commits if fixes are genuinely unrelated. Then ask before pushing — replies referencing commits only make sense once they're on the remote.
 
-## 6. Close the loop on GitHub
+## 5. Close the loop on GitHub
 
 - Reply in every addressed thread, one or two sentences referencing the commit hash. Say first whether you agree or disagree, then what you changed. Post the approved reply-only drafts.
 - Ask once (AskUserQuestion) whether to also mark the addressed threads as resolved (`resolveReviewThread` mutation) — teams differ on whether author or reviewer resolves.
 - Offer to re-request review from whoever requested changes.
 
-## 7. Report
+## 6. Report
 
 Summarize: threads fixed / replied / skipped, commits made, push status, and anything still open. If new feedback lands later, re-running `/address-review` picks up only the still-unresolved threads.
+
+If `~/.agents/scratch/<slug>/guide/` exists, end with: "Guide is from before these fixes — `/pr update` refreshes it."
 
 If any addressed thread touched UI, run `/pr comment` afterwards: it re-takes the AFTER shots for the affected routes and posts them as one comment, so reviewers see the fix instead of re-pulling the branch.
