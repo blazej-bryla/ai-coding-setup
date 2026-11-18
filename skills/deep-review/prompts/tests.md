@@ -8,9 +8,10 @@ Two questions, in order:
 
 **1. Is the changed behaviour covered?**
 
-- Map each behavioural change in the diff (new logic, changed branches, error paths, edge cases) to a test that exercises it. Uncovered behaviour is a finding — name the specific input/scenario no test reaches.
+- Map each behavioural change in the diff (new logic, changed branches, error paths, edge cases) to a test that exercises it. Uncovered behaviour is a finding — name the specific input/scenario no test reaches. It is an `issue` only when the behaviour is an acceptance criterion or an error path the ticket names; otherwise a `suggestion`.
 - Watch for tests that assert implementation details (internal calls, private state) instead of external behaviour — they pass today and rot tomorrow.
 - Look for tests that cannot fail (asserting the mock, tautologies, missing await on the assertion path).
+- Look for redundant tests: the same behaviour proven at two levels (unit and integration, a hook test repeating the component test), value matrices where one case per branch would do, copies of a sibling's suite. Report them as a `suggestion` to remove, naming the test that keeps the coverage.
 - If a test suite relevant to the diff is cheap to run, run it and report the actual result rather than assuming.
 
 **2. Are the tests written like this project writes tests?**

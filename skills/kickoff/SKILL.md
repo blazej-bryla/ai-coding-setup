@@ -44,7 +44,7 @@ Inspect the workdir before doing any work:
 
 ## 3. Explore the codebase and draft context.md
 
-Scope the exploration to what existing context does NOT already cover: for a subtask whose story has a grilled `context.md` in `~/.agents/scratch/<parent-slug>/`, the `wf-explore` subagent verifies that map still holds and extends it for this subtask's specific area, instead of re-exploring from scratch. Spawn the `wf-explore` subagent with the task digest and both app dirs, `model: sonnet` (exploration is retrieval — the judgement stays here); it should return a synthesis — relevant modules, existing patterns and seams, constraints, prior art — not file dumps.
+Scope the exploration to what existing context does NOT already cover: for a subtask whose story has a grilled `context.md` in `~/.agents/scratch/<parent-slug>/`, the `wf-explore` subagent verifies that map still holds and extends it for this subtask's specific area, instead of re-exploring from scratch. Spawn the `wf-explore` subagent with the task digest and both app dirs, `model: sonnet` (exploration is retrieval — the judgement stays here); it should return a synthesis — relevant modules, existing patterns and seams, constraints, prior art, and the parallel flow — not file dumps.
 
 Write `~/.agents/scratch/<slug>/context.md`:
 
@@ -55,6 +55,7 @@ issue: <Linear ID / URL>
 branch: <full branchName>
 mode: local            # local | story — set in step 5; story rules: ~/.agents/skills/work/STORY.md
 base: <base branch>    # the configured WT_BASE_BRANCH, or in story mode the epic's branch (STORY.md §2)
+estimate: <added lines, both sides — set in step 5>
 ---
 
 ## Task
@@ -66,6 +67,9 @@ base: <base branch>    # the configured WT_BASE_BRANCH, or in story mode the epi
 ## Codebase findings
 <synthesis from exploration>
 
+### Parallel flow
+<the existing flow this task is a variant of, and which of its pieces can be reused or derived — from wf-explore; or "none found">
+
 ## Open questions
 <everything unsettled — grist for the grilling>
 ```
@@ -75,6 +79,10 @@ base: <base branch>    # the configured WT_BASE_BRANCH, or in story mode the epi
 Per `plan.grill`: `mine` → run a `/grilling` session on `~/.agents/scratch/<slug>/context.md`, using the `/domain-modeling` skill to maintain the glossary and ADRs as terms and decisions settle (invoke those two directly — they are model-invoked and reachable); `project` → read its `file=`s and run the same session by their text, with their overrides; `none` → no grilling, only the confirmation round below. The rollback and premortem questions are mine and always asked when they apply.
 
 Scale the interview to what is actually unsettled: a meaty "Open questions" section gets the full grill; an empty or thin one (typical for a narrow subtask under an already-grilled story) gets a short confirmation round — put the few remaining decisions to the user and stop. Always at least one round: the user confirms the scope before anything downstream is generated.
+
+**Approach question.** When context.md names a Parallel flow, the first design question puts two approaches side by side, each with a rough added-lines figure: (a) derive from that flow — reuse its types (derived, not copied), its payload, its rules and its component, adding only the difference; (b) a new path. (a) comes first and is the recommended option unless a requirement quoted from the issue rules it out (quote it). The answer goes to context.md under `## Approach` (2–4 lines); tickets follow it.
+
+**Smaller default** applies to every question in the interview (`~/.agents/skills/_shared/CONTEXT.md`): product behaviour the issue doesn't settle gets the "ask the product owner" option.
 
 **Rollback question.** When the task touches DB schema/migrations, an API contract, validation or limits applied to existing data, auth/permissions, or deletes behaviour, ask one question in the grilling: how do we back this out, and what happens to existing data/clients? Record the answer in `context.md` under `## Rollback` (2–4 lines). Same trigger, one more question — a premortem: "assume this failed after release: most likely reason, and what early signal would show it?" — its answer goes under `## Rollback` too. Skip both for pure UI/copy changes.
 
@@ -99,8 +107,8 @@ have at least one; the expectation is text a human can read on the page),
 touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
-they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
+they enable. Mirrored siblings — two areas that need the same change (two builders, two endpoints of one shape) — are never cut as twin tickets built in parallel: the shared part (component, helper, service method) is one prefactoring ticket first and the sibling tickets only wire it in, or one ticket covers both when the wiring is small. Keep each ticket buildable by one worker in one fresh context, with
+its own tests at the seams context.md chose — no test that repeats what another test of the task already proves. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should derive from or extend — the Parallel flow's pieces first when context.md names one, else code the change should look like — taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
 
 **Regular task** (a story included) — ask the user (AskUserQuestion): tickets as local files only (`mode: local` — one PR for the task), or ALSO created as Linear sub-issues under the pasted task (`mode: story` — one PR per ticket, FE and BE alike, stacked only on real chains)? Recommend Linear when the issue has the story label, local otherwise; the user decides.
 
@@ -115,12 +123,12 @@ have at least one; the expectation is text a human can read on the page),
 touch disjoint areas so separate workers can build them in one wave in separate
 worktrees; when two tickets must change the same area, give the later one a
 blocking edge on the earlier one. Prefactoring tickets go first and block what
-they enable. Keep each ticket buildable by one worker in one fresh context, with
-its own tests. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should look like, taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
+they enable. Mirrored siblings — two areas that need the same change (two builders, two endpoints of one shape) — are never cut as twin tickets built in parallel: the shared part (component, helper, service method) is one prefactoring ticket first and the sibling tickets only wire it in, or one ticket covers both when the wiring is small. Keep each ticket buildable by one worker in one fresh context, with
+its own tests at the seams context.md chose — no test that repeats what another test of the task already proves. Every ticket carries a `**Prior art:**` line — 1–2 repo paths of existing code the change should derive from or extend — the Parallel flow's pieces first when context.md names one, else code the change should look like — taken from the Codebase findings in context.md, or `none` — the one exception to /to-tickets' no-file-paths rule. Every ticket declares `**Repo:** fe | be` and is written under `tickets/<that side>/`; Touches and Prior art paths are from the repo root (they start with the app dir). A blocking edge to the other side's ticket is written as `be/02` or `fe/03` — an ordinary blocker, both sides are built in one session. When the task spans both apps, cut both sides' tickets in this one run. Every ticket carries one `**Easy to miss:**` line — `"<one rule quoted from the ticket, spec or context.md that the quickest way to finish could skip or break>" — Shown by: <command, check or observation>`: one rule per ticket, quoted, not paraphrased."
 
 Story mode only, add to it: "Each ticket has at most ONE blocker, of either side — linearise per `~/.agents/skills/work/STORY.md` §2 and show the linearised edges in the quiz; a chain may mix FE and BE tickets."
 
-Once the breakdown is approved and before publishing, print one line per side — `fe: 5 tickets, ~1400 lines (Touches + findings) → story` — a hint only, then write `mode:` (and `base:` per STORY.md §2) into context.md's frontmatter; the user may still switch here (switching to story re-runs the linearisation).
+Once the breakdown is approved and before publishing, print one line per side — `fe: 5 tickets, ~1400 added lines (Touches + findings) → story` — always, in both modes, then write `estimate:` (the total of both lines, added lines) and `mode:` (and `base:` per STORY.md §2) into context.md's frontmatter; the user may still switch here (switching to story re-runs the linearisation).
 
 **Story mode publication** — one `save_issue` per ticket, in dependency order: parent = the story; title `[<fe label>] …` / `[<be label>] …` (the `fe=` / `be=` labels of `WT_TRACKER_LABELS`) with no conventional-commit prefix; description `## Parent` · `## What to build` · `## Acceptance criteria` · `## Blocked by` — no scratch paths, no AFK/HITL; native blocking relations only for the linearised edges; the `fe=` or `be=` label of `WT_TRACKER_LABELS` and nothing else. Right after each call, write back into that ticket's file, under `**Repo:**`, the STORY.md §3 block — `**Linear:**` the identifier, `**Branch:**` its `gitBranchName`, `**Base:** story|<side>/<NN>`, `**Base tip:** —`, `**PR:** —`, `**PR status:** —` — before the next call; a re-run skips tickets that already carry `**Linear:**`. Never set statuses.
 

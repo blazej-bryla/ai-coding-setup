@@ -2,6 +2,18 @@
 
 Newest first.
 
+## v4.10.0 — 2026-11-18
+
+### Changed
+- `/kickoff`: `wf-explore` names the parallel flow (the existing flow a task is a variant of and its reusable pieces); the interview opens with an approach question — derive from that flow vs a new path, with rough added lines; Prior art points to what to derive from first.
+- Ticket slicing: mirrored siblings get one shared prefactoring ticket instead of twin tickets built in parallel; tests only at the chosen seams, no repeated coverage.
+- Review loop in `/work` and `/bugfix`: only `proven` issues are fixed; suggestions, questions and unproven findings stay in findings.md for the guide and the PR. The tests reviewer also reports redundant tests.
+- Smaller default (`_shared/CONTEXT.md`): the recommended option builds less; product questions the issue doesn't settle can go to a "for the product owner" list.
+- Mechanisms no ticket names (pipes, filters, locks, permission rules, changed bodies on existing routes, analytics, e2e specs) are a deviation: the implementer doesn't build them, `/work` reverts or asks.
+
+### Added
+- Size gate: `/kickoff` always records `estimate:`; `/work` prints size vs estimate after each landing and asks once when it passes 2×.
+
 ## v4.9.1 — 2026-11-16
 
 ### Changed
