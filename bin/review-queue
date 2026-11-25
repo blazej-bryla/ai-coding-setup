@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# review-queue — the PRs where my review is requested, with each one's review state; and the verdict rules
+# for an automatic review; and the loop's heartbeat file. No GitHub writes; the only file write is `status`.
+#
+#   review-queue <owner/repo> [max:N]          default N=2
+#     <state> #<N> slug=<slug> head=<sha> base=<baseRef> <title>     one line per PR, stack bottom first
+#     queue: new <n> delta <n> ready <n> skip <n> later <n>
+#   state: new (no findings.md, or malformed) | delta <old>..<new> (head moved) | ready (same head, not
+#   submitted) | skip (same head, submitted) | later (a new/delta beyond N). Findings file:
+#   <scratch>/<slug>/review/findings.md, its summary lines `head: <sha> pr: #<N>` and `status: ready|submitted`.
+#   Slug: first `[a-z]+-[0-9]+(-[0-9]+)?` in the head branch, lowercased; none → <repo name>-pr-<N>.
+#   Order: a PR whose base is another listed PR's head branch comes after it; otherwise by number.
+#   Env (tests): REVIEW_QUEUE_JSON = the `gh pr list` JSON (no network); REVIEW_QUEUE_SCRATCH = scratch root.
+#   Exit 0; gh failure → exit 2 with its last 10 lines.
+#
+#   review-queue verdict <findings.md> --lines N --draft y|n --checks green|pending|red|none --auth y|n --shared y|n
+#                        [--rereview y|n]   (default n)
+#     verdict: <APPROVE|COMMENT|REQUEST_CHANGES|DEFER> — <reason>
+#     post: <finding numbers, comma-separated | none>
+#   Reads the summary block's `actionable:` lines (`- #N <label> (<blocking>, <certainty>) …`). First match wins:
+#   1 blocking → REQUEST_CHANGES, post proven blocking + issue; 2 checks pending → DEFER, post none;
+#   3 proven issue → COMMENT, post proven blocking/issue/suggestion; 4 draft, red checks, lines > 500, auth or
+#   shared → COMMENT naming the trigger, post proven suggestions; 5 → APPROVE, post proven suggestions.
+#   plausible / unverified and nitpick / thought / question / praise are never posted.
+#   Re-review (--rereview y): an actionable line ending `[carried: not fixed]` / `[carried: disputed]` is a
+#   point from the previous review; the summary's `carried: fixed <n> · not fixed <n> · obsolete <n> ·
+#   disputed <n>` line gives the counts (absent → zero). First match wins: 1 blocking (carried or new) →
+#   REQUEST_CHANGES; 2 checks pending → DEFER; 3 any disputed → COMMENT; 4 proven issue (carried or new) →
+#   COMMENT; 5 draft or red checks (lines > 500, auth, shared only when REREVIEW_RULE4=keep) → COMMENT;
+#   6 → APPROVE. Posts as the rules above. Carried findings are never posted, in either mode.
+#
+#   review-queue status <owner/repo> start <queue-output-file>
+#   review-queue status <owner/repo> pr <N> reviewing <i>/<n>
+#   review-queue status <owner/repo> pr <N> done <event> "<reason>" <review URL|-> [fixed <a>/<b>] [needs-you]
+#   review-queue status <owner/repo> end
+#     The loop's heartbeat for Herdr's pr-radar (the only file write here):
+#     ${REVIEW_LOOP_RUN:-~/.agents/run/review-loop}/<owner>__<repo>.json = {repo, sweep_started, sweep_ended,
+#     running: {pr, i, n, since} | null, queue: {new, delta, ready, skip, later}, results: {"<N>": {event,
+#     reason, url, fixed, needs_you, at}}}. Written via .tmp + mv; results older than 7 days dropped on every
+#     write; a malformed file → start fresh (stderr says so). Times: UTC, %Y-%m-%dT%H:%M:%SZ.
+set -euo pipefail
+
+REREVIEW_RULE4=drop   # keep | drop — on a re-review, do size, auth and the shared watchlist block APPROVE?
+
+usage() {
+  echo "usage: review-queue <owner/repo> [max:N]" >&2
+  echo "       review-queue verdict <findings.md> --lines N --draft y|n --checks green|pending|red|none --auth y|n --shared y|n [--rereview y|n]" >&2
+  echo "       review-queue status <owner/repo> start <queue-output-file> | pr <N> reviewing <i>/<n> | pr <N> done <event> \"<reason>\" <url|-> [fixed <a>/<b>] [needs-you] | end" >&2
+  exit 2
+}
+
+# ---- status (heartbeat file) -----------------------------------------------------------------------------
+if [ "${1:-}" = status ]; then
+  shift
+  repo=${1:-}
+  case "$repo" in ?*/?*) ;; *) usage ;; esac
+  shift
+  command -v jq >/dev/null || { echo "review-queue: jq not found" >&2; exit 1; }
+  dir=${REVIEW_LOOP_RUN:-$HOME/.agents/run/review-loop}
+  owner=${repo%%/*} name=${repo#*/}
+  f="$dir/${owner}__${name//\//_}.json"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # the jq program and its args for the one subcommand
+  args=() prog=""
+  case "${1:-}" in
+    start)
+      [ $# -eq 2 ] || usage
+      q=$(grep -m1 '^queue: ' "$2" 2>/dev/null || true)
+      [ -n "$q" ] || echo "review-queue: no 'queue:' line in $2, counts 0" >&2
+      cnt() { local v; v=$(printf '%s' "$q" | sed -n "s/.* $1 \([0-9][0-9]*\).*/\1/p"); echo "${v:-0}"; }
+      args=(--argjson new "$(cnt new)" --argjson delta "$(cnt delta)" --argjson ready "$(cnt ready)"
+            --argjson skip "$(cnt skip)" --argjson later "$(cnt later)")
+      prog='.sweep_started = $now | .sweep_ended = null | .running = null
+            | .queue = {new: $new, delta: $delta, ready: $ready, skip: $skip, later: $later}' ;;
+    pr)
+      n=${2:-}; case "$n" in ''|*[!0-9]*) usage ;; esac
+      case "${3:-}" in
+        reviewing)
+          [ $# -eq 4 ] || usage
+          case "$4" in [0-9]*/[0-9]*) ;; *) usage ;; esac
+          i=${4%%/*} t=${4#*/}
+          case "$i$t" in *[!0-9]*) usage ;; esac
+          args=(--argjson pr "$n" --argjson i "$i" --argjson n "$t")
+          prog='.running = {pr: $pr, i: $i, n: $n, since: $now}' ;;
+        done)
+          [ $# -ge 6 ] || usage
+          event=$4 reason=$5 url=$6; shift 6
+          case "$event" in ''|*[!A-Z_]*) usage ;; esac
+          fixed="" needs=false
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              fixed) [ $# -ge 2 ] || usage; case "$2" in [0-9]*/[0-9]*) fixed=$2 ;; *) usage ;; esac; shift 2 ;;
+              needs-you) needs=true; shift ;;
+              *) usage ;;
+            esac
+          done
+          [ "$url" = - ] && url=""
+          args=(--arg pr "$n" --arg event "$event" --arg reason "$reason" --arg url "$url" --arg fixed "$fixed"
+                --argjson needs "$needs")
+          prog='.results[$pr] = {event: $event, reason: $reason, url: (if $url == "" then null else $url end),
+                  fixed: (if $fixed == "" then null else $fixed end), needs_you: $needs, at: $now}
+                | .running = null' ;;
+        *) usage ;;
+      esac ;;
+    end)
+      [ $# -eq 1 ] || usage
+      prog='.running = null | .sweep_ended = $now' ;;
+    *) usage ;;
+  esac
+
+  mkdir -p "$dir"
+  prev='{}'
+  if [ -f "$f" ]; then
+    if jq -e 'type == "object"' "$f" >/dev/null 2>&1; then prev=$(cat "$f")
+    else echo "review-queue: malformed $f, starting fresh" >&2; fi
+  fi
+  tmp="$f.tmp"
+  # base shape, the subcommand, then drop results older than 7 days (or with an unreadable time)
+  if printf '%s' "$prev" | jq --arg now "$now" --arg repo "$repo" ${args[@]+"${args[@]}"} '
+      {repo: $repo, sweep_started: null, sweep_ended: null, running: null, queue: null} + . + {repo: $repo}
+      | .results = (if (.results | type) == "object" then .results else {} end)
+      | '"$prog"'
+      | ($now | fromdateiso8601) as $t
+      | .results |= with_entries(select(((.value.at? // "") | (try fromdateiso8601 catch 0)) >= $t - 7*86400))
+      ' >"$tmp"; then
+    mv "$tmp" "$f"
+  else
+    rm -f "$tmp"; echo "review-queue: could not write $f" >&2; exit 2
+  fi
+  exit 0
+fi
+
+# ---- verdict ---------------------------------------------------------------------------------------------
+if [ "${1:-}" = verdict ]; then
+  shift
+  f=${1:-}; [ -n "$f" ] || usage; shift
+  lines="" draft="" checks="" auth="" shared="" rereview=n
+  while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || usage
+    case "$1" in
+      --lines) lines=$2 ;; --draft) draft=$2 ;; --checks) checks=$2 ;; --auth) auth=$2 ;; --shared) shared=$2 ;;
+      --rereview) rereview=$2 ;;
+      *) usage ;;
+    esac
+    shift 2
+  done
+  case "$lines" in ''|*[!0-9]*) usage ;; esac
+  for v in "$draft" "$auth" "$shared" "$rereview"; do case "$v" in y|n) ;; *) usage ;; esac; done
+  case "$checks" in green|pending|red|none) ;; *) usage ;; esac
+  [ -f "$f" ] || { echo "review-queue: no file $f" >&2; exit 2; }
+  grep -q '^<!-- summary -->' "$f" && grep -q '^<!-- /summary -->' "$f" \
+    || { echo "review-queue: no summary block in $f" >&2; exit 2; }
+
+  # one row per actionable finding: <n> <label> <blocking y|n> <certainty> <new|nf|disp (carried)>
+  rows=$(awk '
+    /^<!-- summary -->/ { s=1; next } /^<!-- \/summary -->/ { s=0 }
+    s && match($0, /^[[:space:]]*- #[0-9]+ [a-z-]+ \([^)]*\)/) {
+      t=substr($0, RSTART, RLENGTH); sub(/^[[:space:]]*- #/, "", t)
+      n=t; sub(/ .*/, "", n)
+      lab=t; sub(/^[0-9]+ /, "", lab); sub(/ .*/, "", lab)
+      p=t; sub(/^[^(]*\(/, "", p); sub(/\)$/, "", p)
+      b="n"; c="unverified"; k=split(p, a, /, */)
+      for (i=1; i<=k; i++) { if (a[i]=="blocking") b="y"; if (a[i]~/^(proven|plausible|unverified)$/) c=a[i] }
+      k="new"; if ($0 ~ /\[carried: not fixed\][[:space:]]*$/) k="nf"; else if ($0 ~ /\[carried: disputed\][[:space:]]*$/) k="disp"
+      print n, lab, b, c, k
+    }' "$f")
+  disputed=$(awk '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
+    s && /^carried:/ { if (match($0, /disputed [0-9]+/)) print substr($0, RSTART+9, RLENGTH-9); exit }' "$f")
+  disputed=${disputed:-0}   # the count, or any actionable line marked disputed
+  if printf '%s\n' "$rows" | awk 'NF==5 && $5=="disp" { f=1 } END { exit !f }'; then [ "$disputed" -gt 0 ] || disputed=1; fi
+
+  pick() {  # pick <awk condition on $2 label, $3 blocking, $4 certainty> → comma list or none
+    local r; r=$(printf '%s\n' "$rows" | awk "NF==5 && ($1) { printf \"%s%s\", (o++ ? \",\" : \"\"), \$1 }")
+    echo "${r:-none}"
+  }
+  hashes() { echo "$1" | sed 's/^/#/; s/,/, #/g'; }
+  P='$5=="new" && $4=="proven"'   # postable: proven and not carried from the previous review
+  blocking=$(pick '$3=="y"')
+  proven_issue=$(pick '$4=="proven" && $2=="issue"')
+
+  if [ "$blocking" != none ]; then
+    echo "verdict: REQUEST_CHANGES — blocking finding $(hashes "$blocking")"
+    echo "post: $(pick "$P"' && ($3=="y" || $2=="issue")')"
+  elif [ "$checks" = pending ]; then
+    echo "verdict: DEFER — CI checks pending"
+    echo "post: none"
+  elif [ "$rereview" = y ] && [ "$disputed" -gt 0 ]; then
+    echo "verdict: COMMENT — disputed point, needs the reviewer"
+    echo "post: $(pick "$P"' && ($3=="y" || $2=="issue" || $2=="suggestion")')"
+  elif [ "$proven_issue" != none ]; then
+    echo "verdict: COMMENT — proven issue $(hashes "$proven_issue")"
+    echo "post: $(pick "$P"' && ($3=="y" || $2=="issue" || $2=="suggestion")')"
+  else
+    trig=""
+    add() { trig="${trig:+$trig, }$1"; }
+    [ "$draft" = y ] && add "draft PR"
+    [ "$checks" = red ] && add "CI red"
+    if [ "$rereview" = n ] || [ "$REREVIEW_RULE4" = keep ]; then
+      [ "$lines" -gt 500 ] && add "$lines changed lines > 500"
+      [ "$auth" = y ] && add "touches auth"
+      [ "$shared" = y ] && add "touches a shared module"
+    fi
+    if [ -n "$trig" ]; then echo "verdict: COMMENT — no approve: $trig"
+    elif [ "$rereview" = y ]; then echo "verdict: APPROVE — previous points fixed, no blocking or proven issue"
+    else echo "verdict: APPROVE — no blocking or proven issue, no approve blocker"; fi
+    echo "post: $(pick "$P"' && $2=="suggestion"')"
+  fi
+  exit 0
+fi
+
+# ---- queue -----------------------------------------------------------------------------------------------
+repo=${1:-}
+case "$repo" in */*) ;; *) usage ;; esac
+max=2
+if [ $# -ge 2 ]; then
+  case "$2" in max:*) max=${2#max:} ;; *) usage ;; esac
+  case "$max" in ''|*[!0-9]*) usage ;; esac
+fi
+[ $# -le 2 ] || usage
+command -v jq >/dev/null || { echo "review-queue: jq not found" >&2; exit 1; }
+scratch=${REVIEW_QUEUE_SCRATCH:-$HOME/.agents/scratch}
+rname=$(printf '%s' "${repo#*/}" | tr 'A-Z' 'a-z')
+
+if [ -n "${REVIEW_QUEUE_JSON:-}" ]; then
+  json=$REVIEW_QUEUE_JSON
+else
+  err=$(mktemp); trap 'rm -f "$err"' EXIT
+  json=$(gh pr list --repo "$repo" --search "user-review-requested:@me" \
+           --json number,headRefName,headRefOid,baseRefName,title 2>"$err") \
+    || { { cat "$err"; printf '%s\n' "$json"; } | tail -10 >&2; exit 2; }
+fi
+
+# number \t head \t oid \t base \t title, ordered: a PR stacked on another listed PR after it, then by number
+rows=$(printf '%s' "$json" | jq -r '.[] | [.number, .headRefName, .headRefOid, .baseRefName, (.title | gsub("[\t\n]"; " "))] | @tsv' \
+  | awk -F'\t' '
+    { n[NR]=$1+0; h[NR]=$2; b[NR]=$4; line[NR]=$0 }
+    END {
+      for (i=1; i<=NR; i++) { par[i]=0; for (j=1; j<=NR; j++) if (j!=i && b[i]==h[j]) par[i]=j }
+      for (k=1; k<=NR; k++) {
+        best=0
+        for (i=1; i<=NR; i++) if (!done[i] && (par[i]==0 || done[par[i]]) && (!best || n[i]<n[best])) best=i
+        if (!best) for (i=1; i<=NR; i++) if (!done[i] && (!best || n[i]<n[best])) best=i   # cycle guard
+        done[best]=1; print line[best]
+      }
+    }')
+
+cn=0 cd=0 cr=0 cs=0 cl=0
+while IFS=$'\t' read -r num head oid base title; do
+  [ -n "$num" ] || continue
+  slug=$(printf '%s' "$head" | tr 'A-Z' 'a-z' | grep -oE '[a-z]+-[0-9]+(-[0-9]+)?' | head -1 || true)
+  [ -n "$slug" ] || slug="$rname-pr-$num"
+  f="$scratch/$slug/review/findings.md"
+  state=new old="" st=""
+  if [ -f "$f" ]; then
+    old=$(awk -v n="$num" '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
+      s && $1=="head:" && $3=="pr:" && $4=="#" n && $2~/^[0-9a-f]+$/ { print $2; exit }' "$f")
+    st=$(awk '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
+      s && $1=="status:" && ($2=="ready" || $2=="submitted") { print $2; exit }' "$f")
+    if [ -n "$old" ] && [ -n "$st" ]; then
+      if [ "$old" != "$oid" ]; then state="delta ${old:0:7}..${oid:0:7}"
+      elif [ "$st" = ready ]; then state=ready
+      else state=skip; fi
+    fi
+  fi
+  case "$state" in
+    new|delta*)
+      if [ $((cn + cd)) -ge "$max" ]; then state=later; cl=$((cl + 1))
+      elif [ "$state" = new ]; then cn=$((cn + 1)); else cd=$((cd + 1)); fi ;;
+    ready) cr=$((cr + 1)) ;;
+    skip) cs=$((cs + 1)) ;;
+  esac
+  echo "$state #$num slug=$slug head=$oid base=$base $title"
+done <<<"$rows"
+echo "queue: new $cn delta $cd ready $cr skip $cs later $cl"

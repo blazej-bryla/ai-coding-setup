@@ -2,6 +2,72 @@
 
 Newest first.
 
+## v4.14.0 — 2026-11-25
+
+### Added
+- Review loop heartbeat: `review-queue status <owner/repo> start | pr <N> reviewing <i>/<n> | pr <N> done <event> "<reason>" <url|-> [fixed a/b] [needs-you] | end` writes `~/.agents/run/review-loop/<owner>__<repo>.json` atomically (.tmp + mv), keeps results 7 days, starts fresh on a malformed file. `/deep-review loop` calls it on every sweep, even an empty one (ERROR on a failed PR); a failed status call never blocks the sweep. Tests in `tests/review-queue.test.sh`.
+- Herdr pr-radar "Review loop" section, read from those files on the existing refresh (no gh call): per repo `● alive` / `● reviewing #N (i/n)` / `● stalled` (15 min, one constant), a `needs you` group, then the last 10 results (`#N <event> · <reason>`, `fixed a/b` on re-reviews) opening their review. A toast per new needs-you result and when a repo turns stalled. Logic in `mods/pr-radar/loop.js`, tests in `herdr/tests/loop.test.js`.
+
+## v4.13.0 — 2026-11-25
+
+### Added
+- `/deep-review loop … auto` re-review: on a moved head it confirms each comment posted in the previous review (`fixed` / `not fixed` / `obsolete` / `disputed`, the PR author's thread replies read), carries the open ones, publishes one short review linking their threads, and approves when all are fixed. A rebased PR gets the full diff.
+- `findings.md`: `posted: #<n>=<comment id>|body,…` and `review: <id>` after publishing; a re-review adds `carried: fixed · not fixed · obsolete · disputed` counts.
+- `review-queue verdict --rereview y|n`: blocking → pending → disputed → proven issue → draft / red CI → APPROVE; size, auth and the shared watchlist do not block a re-review approve (`REREVIEW_RULE4=drop`). Carried findings are never posted. Tests for each rule.
+
+### Fixed
+- Loop `auto`: deferred PRs (`ready`) are published on a later sweep instead of only being reminded; they do not count towards max:N.
+
+## v4.12.1 — 2026-11-24
+
+### Fixed
+- `/deep-review`: the Attribution footer subsection moved before step 6, so the review body rules and the verdict rules sit under their section again.
+
+## v4.12.0 — 2026-11-24
+
+### Added
+- `/deep-review loop <repo URL> [max:N] [auto]`: one sweep over the open PRs where my review is requested, then it ends; recurring runs come from the built-in `/loop` (e.g. `/loop 10m /deep-review loop <url>`). Without `auto` it only prepares findings for `/deep-review <N>`.
+- `auto`: publishes one review per PR without triage, with the event from `review-queue verdict`; only `proven` findings are posted; no APPROVE for drafts, red CI, > 500 changed lines, auth changes or shared modules; pending CI defers the PR to the next sweep.
+- `bin/review-queue`: the review-requested PRs with their state (`new`, `delta`, `ready`, `skip`, `later`), stack bottom first; `review-queue verdict` applies the auto-publish rules. Tests: `tests/review-queue.test.sh`.
+- AI attribution on every published review: each inline comment ends with a `found by … · <certainty> · refute: …` line, the body with a footer naming the agents and the mode.
+
+### Changed
+- PR-mode slug comes from the PR's head branch (fallback `<repo name>-pr-<N>`).
+- Same head with `status: ready` findings resumes at the triage instead of asking.
+- `findings.md`: a `status: ready|submitted` line after `head:`, and `found-by:` / `refute:` per finding.
+
+## v4.11.2 — 2026-11-24
+
+### Changed
+- `/work`: worker prompts carry the `conventions` slot's `overrides=` verbatim when non-empty, marked as winning over the project files.
+
+## v4.11.1 — 2026-11-19
+
+### Changed
+- `quiet` accepts `-n N` as the last two arguments too (`quiet "<cmd args…>" -n 80`), not only before the command.
+
+## v4.11.0 — 2026-11-19
+
+### Added
+- `/deep-review` re-review: when a PR was already reviewed and its head moved, only the delta since the reviewed SHA goes to one light reviewer, with the previous findings as input (`full` forces a full run). `findings.md` records `head: <sha> pr: #<N>` on PR runs.
+- `abcheck --before` (a pre-change shot that never fails and saves its console and page errors to `<shot>.errors`) and `--known-errors <file>` (errors already present before the change are reported as known, not failures). With an expectation and a shot, `abcheck` also waits for network idle before the shot; not reaching it is only a note.
+- `/kickoff`: interview rounds go through AskUserQuestion — at most four questions, one decision each, with a concrete example, in the user's language.
+- Tests: `tests/abcheck.test.sh` (stub `agent-browser`), `tests/quiet.test.sh`.
+
+### Changed
+- Review prompts, the merge agent and the review guide write their output file once with the Write tool instead of appending through the shell.
+- The tests reviewer runs only the spec files the diff adds or changes, never a whole suite; in `/work` and `/bugfix` the orchestrator owns suite runs.
+- Repair workers in `/work` continue the earlier worker's branch: the old worktree is removed and its `wip/` branch passed as `Branch:`.
+- `/work` review selection: a dimension is added only for a named reason, never all four by default.
+- Profile drift no longer stops the read-only `/deep-review`; it is quoted in one line and the run continues.
+- A PR review never checks out the PR branch in a shared checkout; it uses a detached worktree.
+- `quiet` accepts parentheses in the one-string form (route-group paths such as `app/(dash)/x.test.tsx`).
+- `wf-implementer` reads files it changes with the Read tool; `wf-explore` searches with `rg`/`find`.
+- `/pr`: each shot is read at most once per run.
+
+### Removed
+- No-op worker instructions: the explicit conventions read (the contract already reaches workers), exploration notes, the seeder and preview lines, the one-command shell rule.
+
 ## v4.10.0 — 2026-11-18
 
 ### Changed

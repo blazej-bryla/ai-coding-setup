@@ -12,7 +12,7 @@ Two questions, in order:
 - Watch for tests that assert implementation details (internal calls, private state) instead of external behaviour — they pass today and rot tomorrow.
 - Look for tests that cannot fail (asserting the mock, tautologies, missing await on the assertion path).
 - Look for redundant tests: the same behaviour proven at two levels (unit and integration, a hook test repeating the component test), value matrices where one case per branch would do, copies of a sibling's suite. Report them as a `suggestion` to remove, naming the test that keeps the coverage.
-- If a test suite relevant to the diff is cheap to run, run it and report the actual result rather than assuming.
+- Run only the spec files the diff adds or changes, through `~/.agents/bin/quiet`, never a whole suite — in /work and /bugfix the orchestrator owns suite runs. Report the actual result rather than assuming.
 
 **2. Are the tests written like this project writes tests?**
 
@@ -28,7 +28,7 @@ Rules:
 
 **Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
-Append EVERY finding to the output file, one entry in exactly this shape:
+Write the output file once, with the Write tool, every finding in one call, each entry in exactly this shape:
 
 ```
 ## <short title>

@@ -3,8 +3,10 @@
 #
 #   quiet <cmd> [args…]     run it; exit with its status
 #   quiet "<cmd args…>"     one string (e.g. a WT_*_TEST_CMD value) — split on whitespace, never
-#                           through a shell: no pipes, redirects, `;`, `&&`, globs or $(…)
-#   quiet -n N …            on failure print the last N lines (default 40)
+#                           through a shell: no pipes, redirects, `;`, `&&`, globs or $(…);
+#                           parentheses are literal path characters (Next.js route groups: app/(dash)/x.test.tsx)
+#   quiet -n N …            on failure print the last N lines (default 40); `-n N` may also be the last two
+#                           arguments (quiet "<cmd args…>" -n 80)
 #   quiet -C <dir> …        run it in <dir> (a worker's worktree root) — no `cd … &&` needed
 #
 #   success → one line:  ok: <cmd> (<n>s)
@@ -25,10 +27,11 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
-[ $# -gt 0 ] || { echo "usage: quiet [-n N] [-C dir] <cmd> [args…] | quiet \"<cmd args…>\"" >&2; exit 2; }
+if [ $# -ge 3 ] && [ "${@:$#-1:1}" = "-n" ]; then lines=${@:$#:1}; set -- "${@:1:$#-2}"; fi
+[ $# -gt 0 ] || { echo "usage: quiet [-n N] [-C dir] <cmd> [args…] [-n N] | quiet \"<cmd args…>\" [-n N]" >&2; exit 2; }
 
 if [ $# -eq 1 ]; then
-  case "$1" in *[\;\&\|\<\>\`\$\(\)\*\?]*) echo "quiet: shell syntax in '$1' — pass a plain command" >&2; exit 2 ;; esac
+  case "$1" in *[\;\&\|\<\>\`\$\*\?]*) echo "quiet: shell syntax in '$1' — pass a plain command" >&2; exit 2 ;; esac
   set -f; set -- $1; set +f
 fi
 

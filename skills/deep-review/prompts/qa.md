@@ -49,7 +49,7 @@ Rules:
 
 **Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
-Append EVERY finding to the output file, one entry in exactly this shape (use the changed file/line most relevant to the requirement; if truly nothing in the diff relates, write `file: (none)` and `line: 0` — the orchestrator will surface it in the review body instead of inline):
+Write the output file once, with the Write tool, every finding in one call, each entry in exactly this shape (use the changed file/line most relevant to the requirement; if truly nothing in the diff relates, write `file: (none)` and `line: 0` — the orchestrator will surface it in the review body instead of inline):
 
 ```
 ## <short title>

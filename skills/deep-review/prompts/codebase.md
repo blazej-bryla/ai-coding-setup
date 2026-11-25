@@ -24,7 +24,7 @@ Rules:
 
 **Re-review.** When the context block names `Previous findings:` (a repair's re-review), read that file first, verify each previously blocking finding against the new code, inspect the delta, and file anything else as non-blocking notes — don't re-prosecute what it already settled.
 
-Append EVERY finding to the output file, one entry in exactly this shape:
+Write the output file once, with the Write tool, every finding in one call, each entry in exactly this shape:
 
 ```
 ## <short title>

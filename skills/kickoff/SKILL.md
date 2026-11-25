@@ -80,6 +80,8 @@ Per `plan.grill`: `mine` → run a `/grilling` session on `~/.agents/scratch/<sl
 
 Scale the interview to what is actually unsettled: a meaty "Open questions" section gets the full grill; an empty or thin one (typical for a narrow subtask under an already-grilled story) gets a short confirmation round — put the few remaining decisions to the user and stop. Always at least one round: the user confirms the scope before anything downstream is generated.
 
+**Rounds.** Outside refine mode, put each round to the user with AskUserQuestion — at most four questions, one decision each, with a concrete example in the option text — in the language the user writes in.
+
 **Approach question.** When context.md names a Parallel flow, the first design question puts two approaches side by side, each with a rough added-lines figure: (a) derive from that flow — reuse its types (derived, not copied), its payload, its rules and its component, adding only the difference; (b) a new path. (a) comes first and is the recommended option unless a requirement quoted from the issue rules it out (quote it). The answer goes to context.md under `## Approach` (2–4 lines); tickets follow it.
 
 **Smaller default** applies to every question in the interview (`~/.agents/skills/_shared/CONTEXT.md`): product behaviour the issue doesn't settle gets the "ask the product owner" option.
