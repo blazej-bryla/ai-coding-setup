@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# tests/review-queue.test.sh — bin/review-queue: status heartbeat file (start, reviewing, done upsert, end, .tmp, 7-day prune, malformed); queue states (new, delta, ready, skip, later, malformed → new),
-# slug fallback, stack ordering, the max cap; verdict rules 1–5, the --rereview rules 1–6, first-match order. No network:
+# tests/review-queue.test.sh — bin/review-queue: status heartbeat file (start, reviewing, done upsert incl. HOLD, end, .tmp, 7-day prune, malformed); queue states (new, delta, ready, held, skip, later,
+# malformed → new), slug fallback, stack ordering, the max cap; verdict rules 1–5, the --rereview rules 1–6 (HOLD, accepted), first-match order. No network:
 # the PR list comes from REVIEW_QUEUE_JSON, findings files from a temp REVIEW_QUEUE_SCRATCH. Needs jq.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,7 +40,17 @@ echo "$out" | grep -qx "delta 0000000..bbbbbbb #12 slug=abc-12 head=$B base=main
 echo "$out" | grep -qx "skip #13 slug=abc-13 head=$C base=main Thirteen" && ok "same head + submitted → skip" || ko "skip" "$out"
 echo "$out" | grep -qx "new #14 slug=abc-14 head=$D base=main Fourteen" && ok "malformed findings (no status) → new" || ko "malformed" "$out"
 echo "$out" | grep -qx "new #15 slug=widget-app-pr-15 head=$E base=main Fifteen" && ok "no key in branch → <repo>-pr-<N>" || ko "slug fallback" "$out"
-echo "$out" | tail -1 | grep -qx "queue: new 2 delta 1 ready 1 skip 1 later 0" && ok "summary counts" || ko "summary" "$out"
+echo "$out" | tail -1 | grep -qx "queue: new 2 delta 1 ready 1 skip 1 later 0 held 0" && ok "summary counts" || ko "summary" "$out"
+
+# held: same head → held (listed, not counted towards max); head moved → delta as usual
+findings abc-17 17 "$A" held
+findings abc-18 18 "$O" held
+J="[$(pr 17 abc-17 "$A" main "Seventeen"),$(pr 18 abc-18 "$B" main "Eighteen"),$(pr 19 abc-19 "$C" main "Nineteen")]"
+out=$(queue "$J" max:1)
+echo "$out" | grep -qx "held #17 slug=abc-17 head=$A base=main Seventeen" && ok "same head + held → held" || ko "held" "$out"
+echo "$out" | grep -qx "delta 0000000..bbbbbbb #18 slug=abc-18 head=$B base=main Eighteen" && ok "held + moved head → delta" || ko "held moved" "$out"
+echo "$out" | grep -q "^later #19 " && echo "$out" | tail -1 | grep -qx "queue: new 0 delta 1 ready 0 skip 0 later 1 held 1" \
+  && ok "held not counted towards max:N" || ko "held max" "$out"
 
 # head line for another PR number → malformed → new
 findings abc-16 99 "$A" ready
@@ -57,7 +67,7 @@ findings abc-41 41 "$A" ready
 J="[$(pr 40 abc-40 "$A" main "a"),$(pr 41 abc-41 "$A" main "b"),$(pr 42 abc-42 "$A" main "c"),$(pr 43 abc-43 "$A" main "d")]"
 out=$(queue "$J")
 st=$(echo "$out" | awk '{print $1 $2}' | tr '\n' ' ')
-[ "$st" = "new#40 ready#41 new#42 later#43 queue:new " ] && echo "$out" | tail -1 | grep -qx "queue: new 2 delta 0 ready 1 skip 0 later 1" \
+[ "$st" = "new#40 ready#41 new#42 later#43 queue:new " ] && echo "$out" | tail -1 | grep -qx "queue: new 2 delta 0 ready 1 skip 0 later 1 held 0" \
   && ok "default max 2: third new → later" || ko "max cap" "$out"
 out=$(queue "$J" max:1)
 echo "$out" | grep -q "^later #42 " && ok "max:1 → second new is later" || ko "max:1" "$out"
@@ -155,14 +165,35 @@ post: 2" ] && ok "rereview 4: carried not-fixed issue → COMMENT, carried not p
 RDIS=$(vr rdis "carried: fixed 1 · not fixed 0 · obsolete 0 · disputed 1" \
   "- #1 issue (proven) src/a.ts:1 — bug [carried: disputed]" "- #2 issue (proven) src/b.ts:2 — new bug")
 out=$(RR "$RDIS" $(base))
-[ "$out" = "verdict: COMMENT — disputed point, needs the reviewer
-post: 2" ] && ok "rereview 3: disputed → COMMENT (beats proven issue), carried not posted" || ko "rereview 3" "$out"
+[ "$out" = "verdict: HOLD — disputed point, needs the reviewer
+post: none" ] && ok "rereview 3: disputed → HOLD, post none (beats proven issue)" || ko "rereview 3" "$out"
+out=$(RR "$RDIS" --lines 100 --draft y --checks red --auth n --shared n)
+echo "$out" | head -1 | grep -qx "verdict: HOLD — disputed point, needs the reviewer" && ok "rereview first match: HOLD beats draft / red CI" || ko "HOLD vs rule 5" "$out"
 out=$(RR "$RDIS" --lines 100 --draft n --checks pending --auth n --shared n)
 [ "$out" = "verdict: DEFER — CI checks pending
 post: none" ] && ok "rereview first match: pending beats disputed" || ko "pending vs disputed" "$out"
 RDM=$(vr rdm - "- #1 question (plausible) src/a.ts:1 — why [carried: disputed]")
 out=$(RR "$RDM" $(base))
-echo "$out" | head -1 | grep -qx "verdict: COMMENT — disputed point, needs the reviewer" && ok "rereview: disputed marker without carried line → COMMENT" || ko "disputed marker" "$out"
+echo "$out" | head -1 | grep -qx "verdict: HOLD — disputed point, needs the reviewer" && ok "rereview: disputed marker without carried line → HOLD" || ko "disputed marker" "$out"
+
+RACC=$(vr racc "carried: fixed 3 · not fixed 0 · obsolete 0 · disputed 0 · accepted 1" "- #1 suggestion (proven) src/a.ts:1 — tidy")
+out=$(RR "$RACC" $(base))
+[ "$out" = "verdict: APPROVE — previous points fixed or accepted, no blocking or proven issue
+post: 1" ] && ok "rereview 6: all fixed + accepted → APPROVE" || ko "accepted approve" "$out"
+RACM=$(vr racm "carried: fixed 3 · not fixed 0 · obsolete 0 · disputed 0 · accepted 1" "- #1 issue (proven) src/a.ts:1 — gateway [carried: accepted]")
+out=$(RR "$RACM" $(base))
+echo "$out" | head -1 | grep -q "^verdict: APPROVE" && ok "rereview: a [carried: accepted] line counts as resolved" || ko "accepted marker" "$out"
+RDBL=$(vr rdbl "carried: fixed 0 · not fixed 0 · obsolete 0 · disputed 1 · accepted 0" "- #1 issue (blocking, proven) src/a.ts:1 — breaks AC [carried: disputed]")
+out=$(RR "$RDBL" $(base))
+[ "$out" = "verdict: HOLD — disputed blocking point, needs the reviewer
+post: none" ] && ok "rereview: disputed blocking alone → HOLD, never REQUEST_CHANGES" || ko "blocking disputed" "$out"
+out=$(RR "$RDBL" --lines 100 --draft n --checks pending --auth n --shared n)
+echo "$out" | head -1 | grep -qx "verdict: DEFER — CI checks pending" && ok "rereview: pending beats a disputed blocking HOLD" || ko "pending vs disputed blocking" "$out"
+RDBN=$(vr rdbn "carried: fixed 0 · not fixed 0 · obsolete 0 · disputed 1 · accepted 0" \
+  "- #1 issue (blocking, proven) src/a.ts:1 — breaks AC [carried: disputed]" "- #2 issue (blocking, proven) src/b.ts:2 — new break")
+out=$(RR "$RDBN" --lines 100 --draft n --checks pending --auth n --shared n)
+[ "$out" = "verdict: REQUEST_CHANGES — blocking finding #2
+post: 2" ] && ok "rereview: disputed blocking + new blocking → REQUEST_CHANGES on the new one, post it only" || ko "disputed + new blocking" "$out"
 
 RBLK=$(vr rblk "carried: fixed 0 · not fixed 1 · obsolete 0 · disputed 1" \
   "- #1 issue (blocking, proven) src/a.ts:1 — breaks AC [carried: not fixed]" "- #2 issue (proven) src/b.ts:2 — new bug")
@@ -188,9 +219,9 @@ SF="$RUN/acme__widget-app.json"
 J() { jq -c "$1" "$SF"; }
 ISO='^"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"$'
 
-printf 'new #5 slug=abc-5 head=x base=main T\nqueue: new 1 delta 2 ready 3 skip 4 later 5\n' >"$T/q.out"
+printf 'new #5 slug=abc-5 head=x base=main T\nqueue: new 1 delta 2 ready 3 skip 4 later 5 held 6\n' >"$T/q.out"
 ST start "$T/q.out" && [ -f "$SF" ] && [ "$(J .repo)" = '"acme/widget-app"' ] \
-  && [ "$(J .queue)" = '{"new":1,"delta":2,"ready":3,"skip":4,"later":5}' ] \
+  && [ "$(J .queue)" = '{"new":1,"delta":2,"ready":3,"skip":4,"later":5,"held":6}' ] \
   && [ "$(J '[.sweep_ended, .running]')" = '[null,null]' ] && J .sweep_started | grep -Eq "$ISO" \
   && ok "status start: repo, queue counts, sweep_started, ended/running null" || ko "status start" "$(cat "$SF" 2>&1)"
 ST pr 12 reviewing 2/3 && [ "$(J '.running | [.pr, .i, .n]')" = '[12,2,3]' ] && J .running.since | grep -Eq "$ISO" \
@@ -201,6 +232,10 @@ ST pr 12 done COMMENT "no approve: touches auth" https://example.test/r/1 needs-
 ST pr 12 done APPROVE "previous points fixed" - fixed 2/3 \
   && [ "$(J '.results["12"] | [.event, .url, .fixed, .needs_you]')" = '["APPROVE",null,"2/3",false]' ] \
   && [ "$(J '.results | length')" = 1 ] && ok "status pr done again: upsert replaces, '-' → null url, fixed a/b" || ko "status upsert" "$(cat "$SF")"
+ST pr 14 done HOLD "disputed point, needs the reviewer" - needs-you \
+  && [ "$(J '.results["14"] | [.event, .reason, .url, .needs_you]')" = '["HOLD","disputed point, needs the reviewer",null,true]' ] \
+  && ok "status pr done HOLD … - needs-you accepted" || ko "status HOLD" "$(cat "$SF")"
+jq 'del(.results["14"])' "$SF" >"$T/h.json" && mv "$T/h.json" "$SF"
 ST end && J .sweep_ended | grep -Eq "$ISO" && ok "status end: sweep_ended set" || ko "status end" "$(cat "$SF")"
 ls -a "$RUN" | grep -q tmp && ko "status atomic" "a .tmp file is left" || ok "status: written via .tmp + mv, nothing left behind"
 ST start "$T/q.out" && [ "$(J '.results | keys')" = '["12"]' ] && [ "$(J .sweep_ended)" = null ] \
@@ -217,7 +252,7 @@ printf '{not json' >"$SF"
 err=$(ST pr 9 done DEFER "CI checks pending" - 2>&1 >/dev/null); rc=$?
 [ $rc = 0 ] && echo "$err" | grep -q "malformed" && [ "$(J '.results | keys')" = '["9"]' ] && [ "$(J .repo)" = '"acme/widget-app"' ] \
   && ok "status: malformed file → fresh start, said on stderr" || ko "status malformed" "rc=$rc err=$err"
-ST start "$T/missing.out" 2>/dev/null && [ "$(J .queue)" = '{"new":0,"delta":0,"ready":0,"skip":0,"later":0}' ] \
+ST start "$T/missing.out" 2>/dev/null && [ "$(J .queue)" = '{"new":0,"delta":0,"ready":0,"skip":0,"later":0,"held":0}' ] \
   && ok "status start without a queue line: counts 0, still a heartbeat" || ko "status no queue" "$(cat "$SF")"
 ST pr x reviewing 1/2 2>/dev/null; [ $? = 2 ] && ok "status pr x → usage, exit 2" || ko "status usage" "exit not 2"
 ST pr 3 done APPROVE "r" - bogus 2>/dev/null; [ $? = 2 ] && ok "status done with an unknown flag → usage, exit 2" || ko "status flag usage" "exit not 2"

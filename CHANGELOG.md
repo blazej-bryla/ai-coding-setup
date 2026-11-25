@@ -2,6 +2,18 @@
 
 Newest first.
 
+## v4.15.1 — 2026-11-25
+
+### Fixed
+- A disputed blocking point holds for the reviewer (`HOLD — disputed blocking point, needs the reviewer`, nothing published) instead of an unexplained REQUEST_CHANGES. A new or not-fixed blocking finding still requests changes first, posting only the new one.
+
+## v4.15.0 — 2026-11-25
+
+### Changed
+- `/deep-review loop … auto` re-review accepts the author's reasoning on non-blocking points when every factual claim in the reply is verified (code fact by path:line or grep, planned removal by a rule or Decision line in the conventions): new mark `accepted — <evidence>`, not carried, counted in `carried: … accepted <n>`, listed in the body with its evidence (`3 of 4 earlier points are fixed; 1 accepted.`). A blocking item is never accepted.
+- A disputed point publishes nothing: `review-queue verdict --rereview y` returns `HOLD — disputed point, needs the reviewer` (post none) instead of COMMENT; findings.md gets `status: held`, the PR waits for the reviewer (`/deep-review <N>` goes straight to triage), `review-queue` lists it as `held` (not processed, not counted towards max:N; a moved head → `delta`), the heartbeat records `done HOLD … needs-you`, pr-radar shows it under `needs you`. A disputed item never appears in a published body. The queue line gains `held <n>`.
+- Tests: verdict HOLD and its order, accepted counted as resolved, queue `held` vs moved head, status with HOLD; pr-radar HOLD rendering and the missing v4.14.0 case (a sweep started > 15 min ago, not ended, no running PR → `stalled`).
+
 ## v4.14.0 — 2026-11-25
 
 ### Added

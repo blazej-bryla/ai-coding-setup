@@ -4,10 +4,11 @@
 #
 #   review-queue <owner/repo> [max:N]          default N=2
 #     <state> #<N> slug=<slug> head=<sha> base=<baseRef> <title>     one line per PR, stack bottom first
-#     queue: new <n> delta <n> ready <n> skip <n> later <n>
+#     queue: new <n> delta <n> ready <n> skip <n> later <n> held <n>
 #   state: new (no findings.md, or malformed) | delta <old>..<new> (head moved) | ready (same head, not
-#   submitted) | skip (same head, submitted) | later (a new/delta beyond N). Findings file:
-#   <scratch>/<slug>/review/findings.md, its summary lines `head: <sha> pr: #<N>` and `status: ready|submitted`.
+#   submitted) | held (same head, a re-review held for the reviewer; listed, not processed, not counted towards N)
+#   | skip (same head, submitted) | later (a new/delta beyond N). Findings file:
+#   <scratch>/<slug>/review/findings.md, its summary lines `head: <sha> pr: #<N>` and `status: ready|held|submitted`.
 #   Slug: first `[a-z]+-[0-9]+(-[0-9]+)?` in the head branch, lowercased; none → <repo name>-pr-<N>.
 #   Order: a PR whose base is another listed PR's head branch comes after it; otherwise by number.
 #   Env (tests): REVIEW_QUEUE_JSON = the `gh pr list` JSON (no network); REVIEW_QUEUE_SCRATCH = scratch root.
@@ -24,10 +25,13 @@
 #   plausible / unverified and nitpick / thought / question / praise are never posted.
 #   Re-review (--rereview y): an actionable line ending `[carried: not fixed]` / `[carried: disputed]` is a
 #   point from the previous review; the summary's `carried: fixed <n> · not fixed <n> · obsolete <n> ·
-#   disputed <n>` line gives the counts (absent → zero). First match wins: 1 blocking (carried or new) →
-#   REQUEST_CHANGES; 2 checks pending → DEFER; 3 any disputed → COMMENT; 4 proven issue (carried or new) →
-#   COMMENT; 5 draft or red checks (lines > 500, auth, shared only when REREVIEW_RULE4=keep) → COMMENT;
-#   6 → APPROVE. Posts as the rules above. Carried findings are never posted, in either mode.
+#   disputed <n> · accepted <n>` line gives the counts (absent → zero). `accepted` (the author's verified
+#   reasoning on a non-blocking point) counts as resolved: it is not carried, and a line marked
+#   `[carried: accepted]` is ignored. First match wins: 1 blocking, new or carried not fixed → REQUEST_CHANGES
+#   (never when its only blocking cause is a disputed item); 2 checks pending → DEFER; 3 any disputed → HOLD —
+#   disputed blocking point (or: disputed point), needs the reviewer, post none (nothing is published); 4 proven issue (carried or new) → COMMENT; 5 draft or red checks (lines > 500, auth, shared
+#   only when REREVIEW_RULE4=keep) → COMMENT; 6 → APPROVE. Posts as the rules above. Carried findings are
+#   never posted, in either mode.
 #
 #   review-queue status <owner/repo> start <queue-output-file>
 #   review-queue status <owner/repo> pr <N> reviewing <i>/<n>
@@ -35,7 +39,7 @@
 #   review-queue status <owner/repo> end
 #     The loop's heartbeat for Herdr's pr-radar (the only file write here):
 #     ${REVIEW_LOOP_RUN:-~/.agents/run/review-loop}/<owner>__<repo>.json = {repo, sweep_started, sweep_ended,
-#     running: {pr, i, n, since} | null, queue: {new, delta, ready, skip, later}, results: {"<N>": {event,
+#     running: {pr, i, n, since} | null, queue: {new, delta, ready, skip, later, held}, results: {"<N>": {event,
 #     reason, url, fixed, needs_you, at}}}. Written via .tmp + mv; results older than 7 days dropped on every
 #     write; a malformed file → start fresh (stderr says so). Times: UTC, %Y-%m-%dT%H:%M:%SZ.
 set -euo pipefail
@@ -70,9 +74,9 @@ if [ "${1:-}" = status ]; then
       [ -n "$q" ] || echo "review-queue: no 'queue:' line in $2, counts 0" >&2
       cnt() { local v; v=$(printf '%s' "$q" | sed -n "s/.* $1 \([0-9][0-9]*\).*/\1/p"); echo "${v:-0}"; }
       args=(--argjson new "$(cnt new)" --argjson delta "$(cnt delta)" --argjson ready "$(cnt ready)"
-            --argjson skip "$(cnt skip)" --argjson later "$(cnt later)")
+            --argjson skip "$(cnt skip)" --argjson later "$(cnt later)" --argjson held "$(cnt held)")
       prog='.sweep_started = $now | .sweep_ended = null | .running = null
-            | .queue = {new: $new, delta: $delta, ready: $ready, skip: $skip, later: $later}' ;;
+            | .queue = {new: $new, delta: $delta, ready: $ready, skip: $skip, later: $later, held: $held}' ;;
     pr)
       n=${2:-}; case "$n" in ''|*[!0-9]*) usage ;; esac
       case "${3:-}" in
@@ -162,12 +166,16 @@ if [ "${1:-}" = verdict ]; then
       p=t; sub(/^[^(]*\(/, "", p); sub(/\)$/, "", p)
       b="n"; c="unverified"; k=split(p, a, /, */)
       for (i=1; i<=k; i++) { if (a[i]=="blocking") b="y"; if (a[i]~/^(proven|plausible|unverified)$/) c=a[i] }
+      if ($0 ~ /\[carried: accepted\][[:space:]]*$/) next   # resolved: never carried, never counted
       k="new"; if ($0 ~ /\[carried: not fixed\][[:space:]]*$/) k="nf"; else if ($0 ~ /\[carried: disputed\][[:space:]]*$/) k="disp"
       print n, lab, b, c, k
     }' "$f")
   disputed=$(awk '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
     s && /^carried:/ { if (match($0, /disputed [0-9]+/)) print substr($0, RSTART+9, RLENGTH-9); exit }' "$f")
   disputed=${disputed:-0}   # the count, or any actionable line marked disputed
+  accepted=$(awk '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
+    s && /^carried:/ { if (match($0, /accepted [0-9]+/)) print substr($0, RSTART+9, RLENGTH-9); exit }' "$f")
+  accepted=${accepted:-0}
   if printf '%s\n' "$rows" | awk 'NF==5 && $5=="disp" { f=1 } END { exit !f }'; then [ "$disputed" -gt 0 ] || disputed=1; fi
 
   pick() {  # pick <awk condition on $2 label, $3 blocking, $4 certainty> → comma list or none
@@ -177,6 +185,9 @@ if [ "${1:-}" = verdict ]; then
   hashes() { echo "$1" | sed 's/^/#/; s/,/, #/g'; }
   P='$5=="new" && $4=="proven"'   # postable: proven and not carried from the previous review
   blocking=$(pick '$3=="y"')
+  # re-review: a disputed blocking item alone never requests changes — it holds for the reviewer (rule 3)
+  if [ "$rereview" = y ]; then blocking=$(pick '$3=="y" && $5!="disp"'); fi
+  disputed_blocking=$(pick '$3=="y" && $5=="disp"')
   proven_issue=$(pick '$4=="proven" && $2=="issue"')
 
   if [ "$blocking" != none ]; then
@@ -185,9 +196,12 @@ if [ "${1:-}" = verdict ]; then
   elif [ "$checks" = pending ]; then
     echo "verdict: DEFER — CI checks pending"
     echo "post: none"
+  elif [ "$rereview" = y ] && [ "$disputed_blocking" != none ]; then
+    echo "verdict: HOLD — disputed blocking point, needs the reviewer"
+    echo "post: none"
   elif [ "$rereview" = y ] && [ "$disputed" -gt 0 ]; then
-    echo "verdict: COMMENT — disputed point, needs the reviewer"
-    echo "post: $(pick "$P"' && ($3=="y" || $2=="issue" || $2=="suggestion")')"
+    echo "verdict: HOLD — disputed point, needs the reviewer"
+    echo "post: none"
   elif [ "$proven_issue" != none ]; then
     echo "verdict: COMMENT — proven issue $(hashes "$proven_issue")"
     echo "post: $(pick "$P"' && ($3=="y" || $2=="issue" || $2=="suggestion")')"
@@ -202,6 +216,8 @@ if [ "${1:-}" = verdict ]; then
       [ "$shared" = y ] && add "touches a shared module"
     fi
     if [ -n "$trig" ]; then echo "verdict: COMMENT — no approve: $trig"
+    elif [ "$rereview" = y ] && [ "$accepted" -gt 0 ]; then
+      echo "verdict: APPROVE — previous points fixed or accepted, no blocking or proven issue"
     elif [ "$rereview" = y ]; then echo "verdict: APPROVE — previous points fixed, no blocking or proven issue"
     else echo "verdict: APPROVE — no blocking or proven issue, no approve blocker"; fi
     echo "post: $(pick "$P"' && $2=="suggestion"')"
@@ -245,7 +261,7 @@ rows=$(printf '%s' "$json" | jq -r '.[] | [.number, .headRefName, .headRefOid, .
       }
     }')
 
-cn=0 cd=0 cr=0 cs=0 cl=0
+cn=0 cd=0 cr=0 cs=0 cl=0 ch=0
 while IFS=$'\t' read -r num head oid base title; do
   [ -n "$num" ] || continue
   slug=$(printf '%s' "$head" | tr 'A-Z' 'a-z' | grep -oE '[a-z]+-[0-9]+(-[0-9]+)?' | head -1 || true)
@@ -256,10 +272,11 @@ while IFS=$'\t' read -r num head oid base title; do
     old=$(awk -v n="$num" '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
       s && $1=="head:" && $3=="pr:" && $4=="#" n && $2~/^[0-9a-f]+$/ { print $2; exit }' "$f")
     st=$(awk '/^<!-- summary -->/{s=1;next} /^<!-- \/summary -->/{exit}
-      s && $1=="status:" && ($2=="ready" || $2=="submitted") { print $2; exit }' "$f")
+      s && $1=="status:" && ($2=="ready" || $2=="held" || $2=="submitted") { print $2; exit }' "$f")
     if [ -n "$old" ] && [ -n "$st" ]; then
       if [ "$old" != "$oid" ]; then state="delta ${old:0:7}..${oid:0:7}"
       elif [ "$st" = ready ]; then state=ready
+      elif [ "$st" = held ]; then state=held
       else state=skip; fi
     fi
   fi
@@ -268,8 +285,9 @@ while IFS=$'\t' read -r num head oid base title; do
       if [ $((cn + cd)) -ge "$max" ]; then state=later; cl=$((cl + 1))
       elif [ "$state" = new ]; then cn=$((cn + 1)); else cd=$((cd + 1)); fi ;;
     ready) cr=$((cr + 1)) ;;
+    held) ch=$((ch + 1)) ;;
     skip) cs=$((cs + 1)) ;;
   esac
   echo "$state #$num slug=$slug head=$oid base=$base $title"
 done <<<"$rows"
-echo "queue: new $cn delta $cd ready $cr skip $cs later $cl"
+echo "queue: new $cn delta $cd ready $cr skip $cs later $cl held $ch"
